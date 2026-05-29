@@ -11,13 +11,13 @@ import (
 	"github.com/junlang/PRReviewer/internal/analyzer"
 )
 
-type mockIssueClient struct {
-	comments []*github.IssueComment
+type mockReviewClient struct {
+	reviews []*github.PullRequestReviewRequest
 }
 
-func (m *mockIssueClient) CreateComment(ctx context.Context, owner, repo string, number int, comment *github.IssueComment) (*github.IssueComment, *github.Response, error) {
-	m.comments = append(m.comments, comment)
-	return comment, nil, nil
+func (m *mockReviewClient) CreateReview(ctx context.Context, owner, repo string, number int, review *github.PullRequestReviewRequest) (*github.PullRequestReview, *github.Response, error) {
+	m.reviews = append(m.reviews, review)
+	return &github.PullRequestReview{Body: review.Body}, nil, nil
 }
 
 func buildTestResult(summary string, risks []analyzer.Risk, suggestions []analyzer.Suggestion) *analyzer.AnalysisResult {
@@ -88,7 +88,7 @@ func TestFormatComment_WithSuggestions(t *testing.T) {
 }
 
 func TestPublisher_PostComment(t *testing.T) {
-	mock := &mockIssueClient{}
+	mock := &mockReviewClient{}
 	pub := NewPublisher(mock)
 	ctx := context.Background()
 
@@ -98,15 +98,15 @@ func TestPublisher_PostComment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(mock.comments) != 1 {
-		t.Fatalf("expected 1 comment, got %d", len(mock.comments))
+	if len(mock.reviews) != 1 {
+		t.Fatalf("expected 1 review, got %d", len(mock.reviews))
 	}
-	body := mock.comments[0].GetBody()
+	body := mock.reviews[0].GetBody()
 	if !strings.Contains(body, "test summary") {
-		t.Error("comment should contain summary")
+		t.Error("review should contain summary")
 	}
 	if !strings.Contains(body, "AI Reviewer") {
-		t.Error("comment should contain footer")
+		t.Error("review should contain footer")
 	}
 }
 
