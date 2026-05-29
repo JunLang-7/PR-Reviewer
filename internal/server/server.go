@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -128,6 +129,12 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 	publisher := comment.NewPublisher(ghClient.PullRequests)
 	err = publisher.Publish(ctx, info.Owner, info.Repo, info.PRNumber, result)
 	if err != nil {
+		var ghErr *github.ErrorResponse
+		if errors.As(err, &ghErr) {
+			log.Printf("[%s/%s #%d] 步骤4 GitHub 错误: status=%d message=%q errors=%v",
+				info.Owner, info.Repo, info.PRNumber,
+				ghErr.Response.StatusCode, ghErr.Message, ghErr.Errors)
+		}
 		log.Printf("[%s/%s #%d] 步骤4 失败: %v", info.Owner, info.Repo, info.PRNumber, err)
 		return
 	}
