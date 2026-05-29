@@ -30,9 +30,20 @@ func New(appClient *ghclient.Client, pipeline *analyzer.Pipeline, webhookHandler
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.handleRoot)
 	mux.HandleFunc("/webhook", s.handleWebhook)
 	mux.HandleFunc("/health", s.handleHealth)
 	return mux
+}
+
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	log.Printf("received request at / — webhook URL should end with /webhook")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("PR Reviewer is running. Webhook endpoint: POST /webhook"))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
