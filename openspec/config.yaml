@@ -1,0 +1,17 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Go, Claude API (Anthropic SDK), GitHub API (google/go-github)
+  Deployment: local + ngrok (demo), will consider production deployment later
+  Domain: AI-powered PR review automation
+  Language: Chinese + English mixed (user-facing in Chinese, code in English)
+  Conventions: standard Go project layout, clean architecture, Chinese commit messages, small focused commits
+  Testing: TDD — write tests before implementation, use table-driven tests, mock external dependencies
+
+rules:
+  proposal:
+    - Keep proposals concise, under 600 words
+    - Always include a "Non-goals" section
+  tasks:
+    - Break tasks into chunks of max 2 hours
+    - Order by dependency
