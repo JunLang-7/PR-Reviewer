@@ -70,48 +70,87 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 
-	go s.processPR(info)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[panic] PR #%d: %v", info.PRNumber, r)
+			}
+		}()
+		s.processPR(info)
+	}()
 }
 
 func (s *Server) processPR(info *ghclient.PRInfo) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	log.Printf("processing PR #%d (action=%s) in %s/%s", info.PRNumber, info.Action, info.Owner, info.Repo)
+	log.Printf("[%s/%s #%d] ====== 开始处理 ======", info.Owner, info.Repo, info.PRNumber)
+	log.Printf("[%s/%s #%d] action=%s base=%.8s head=%.8s install=%d",
+		info.Owner, info.Repo, info.PRNumber, info.Action, info.BaseSHA, info.HeadSHA, info.InstallationID)
 
-	// Create per-request installation client
+	// Step 1: Create installation client
+	log.Printf("[%s/%s #%d] 步骤1: 创建 installation client...", info.Owner, info.Repo, info.PRNumber)
 	ghClient, err := s.appClient.NewInstallationClient(ctx, info.InstallationID)
 	if err != nil {
-		log.Printf("create installation client error: %v", err)
+		log.Printf("[%s/%s #%d] 步骤1 失败: %v", info.Owner, info.Repo, info.PRNumber, err)
 		return
 	}
+	log.Printf("[%s/%s #%d] 步骤1: 完成", info.Owner, info.Repo, info.PRNumber)
 
-	// Build context
+	// Diagnostic: check installation permissions
+	install, _, err := ghClient.Apps.GetInstallation(ctx, info.InstallationID)
+	if err != nil {
+		log.Printf("[%s/%s #%d] 诊断: 无法获取安装信息: %v", info.Owner, info.Repo, info.PRNumber, err)
+	} else if install.Permissions != nil {
+		p := install.Permissions
+		log.Printf("[%s/%s #%d] 诊断: 安装权限 — issues=%s contents=%s pull_requests=%s metadata=%s",
+			info.Owner, info.Repo, info.PRNumber,
+			strPtr(p.Issues), strPtr(p.Contents), strPtr(p.PullRequests), strPtr(p.Metadata))
+	}
+
+	// Step 2: Build context
+	log.Printf("[%s/%s #%d] 步骤2: 获取 PR diff 和文件内容...", info.Owner, info.Repo, info.PRNumber)
 	builder := prcontext.NewBuilder(ghClient.Repositories)
 	prCtx, err := builder.Build(ctx, info.Owner, info.Repo, info.BaseSHA, info.HeadSHA)
 	if err != nil {
-		log.Printf("context build error: %v", err)
+		log.Printf("[%s/%s #%d] 步骤2 失败: %v", info.Owner, info.Repo, info.PRNumber, err)
 		s.postErrorComment(ctx, ghClient, info, "获取 PR 上下文失败: "+err.Error())
 		return
 	}
+	log.Printf("[%s/%s #%d] 步骤2: 完成 (%d 个文件, %d 行 diff)", info.Owner, info.Repo, info.PRNumber, prCtx.TotalFiles, prCtx.TotalDiffLines)
 
-	// Run pipeline
+	// Step 3: AI pipeline
+	log.Printf("[%s/%s #%d] 步骤3: AI 分析中...", info.Owner, info.Repo, info.PRNumber)
 	result, err := s.pipeline.Run(ctx, analyzer.PipelineInput{
 		Diff:           buildDiffString(prCtx),
 		FileContents:   prCtx.FileContents,
 		Stage3Eligible: prCtx.Stage3Eligible,
 	})
 	if err != nil {
-		log.Printf("pipeline error: %v", err)
+		log.Printf("[%s/%s #%d] 步骤3 失败: %v", info.Owner, info.Repo, info.PRNumber, err)
 	}
+	log.Printf("[%s/%s #%d] 步骤3: 完成 (summary=%v, risks=%d)",
+		info.Owner, info.Repo, info.PRNumber,
+		result.Summary != nil && result.Summary.Error == nil,
+		riskCount(result))
 
-	// Publish comment
+	// Step 4: Publish comment
+	log.Printf("[%s/%s #%d] 步骤4: 发布评论...", info.Owner, info.Repo, info.PRNumber)
 	publisher := comment.NewPublisher(ghClient.Issues)
 	if err := publisher.Publish(ctx, info.Owner, info.Repo, info.PRNumber, result); err != nil {
-		log.Printf("publish comment error: %v", err)
+		log.Printf("[%s/%s #%d] 步骤4 失败: %v", info.Owner, info.Repo, info.PRNumber, err)
+		return
 	}
+	log.Printf("[%s/%s #%d] 步骤4: 评论已发布", info.Owner, info.Repo, info.PRNumber)
 
-	log.Printf("PR #%d review complete", info.PRNumber)
+	log.Printf("[%s/%s #%d] ====== 处理完成 ======", info.Owner, info.Repo, info.PRNumber)
+}
+
+func riskCount(result *analyzer.AnalysisResult) int {
+	if result.Risks != nil {
+		return len(result.Risks.Risks)
+	}
+	return 0
 }
 
 func (s *Server) postErrorComment(ctx context.Context, ghClient *github.Client, info *ghclient.PRInfo, msg string) {
@@ -121,6 +160,13 @@ func (s *Server) postErrorComment(ctx context.Context, ghClient *github.Client, 
 	if err != nil {
 		log.Printf("post error comment failed: %v", err)
 	}
+}
+
+func strPtr(s *string) string {
+	if s == nil {
+		return "<none>"
+	}
+	return *s
 }
 
 func buildDiffString(prCtx *prcontext.PRContext) string {
