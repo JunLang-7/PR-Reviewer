@@ -11,6 +11,7 @@ import (
 	"github.com/junlang/PRReviewer/internal/analyzer"
 	"github.com/junlang/PRReviewer/internal/config"
 	"github.com/junlang/PRReviewer/internal/github"
+	"github.com/junlang/PRReviewer/internal/logger"
 	"github.com/junlang/PRReviewer/internal/server"
 )
 
@@ -30,9 +31,19 @@ func main() {
 	srv := server.New(appClient, pipeline, webhookHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("PR Reviewer starting on %s (LLM: %s, models: %s/%s)",
-		addr, cfg.LLMBaseURL, cfg.LLMModelFast, cfg.LLMModelPowerful)
-	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
+	log.Printf("========================================")
+	log.Printf("PR Reviewer 已启动")
+	log.Printf("监听地址: %s", addr)
+	log.Printf("Webhook:  POST %s/webhook", addr)
+	log.Printf("健康检查: GET  %s/health", addr)
+	log.Printf("LLM:      %s (fast=%s, power=%s)", cfg.LLMBaseURL, cfg.LLMModelFast, cfg.LLMModelPowerful)
+	log.Printf("========================================")
+
+	// Wrap handler with request logger
+	handler := logger.RequestLogger(srv.Handler())
+
+	log.Printf("等待 webhook 请求...")
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
 	}
