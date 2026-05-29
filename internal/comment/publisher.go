@@ -11,9 +11,9 @@ import (
 	"github.com/junlang/PRReviewer/internal/analyzer"
 )
 
-// IssueCommentClient abstracts the GitHub Issues API for posting comments.
-type IssueCommentClient interface {
-	CreateComment(ctx context.Context, owner, repo string, number int, comment *github.IssueComment) (*github.IssueComment, *github.Response, error)
+// PRReviewClient abstracts the GitHub Pull Requests API for creating reviews.
+type PRReviewClient interface {
+	CreateReview(ctx context.Context, owner, repo string, number int, review *github.PullRequestReviewRequest) (*github.PullRequestReview, *github.Response, error)
 }
 
 type Formatter struct {
@@ -127,10 +127,10 @@ func groupBySeverity(risks []analyzer.Risk) map[string][]analyzer.Risk {
 }
 
 type Publisher struct {
-	client IssueCommentClient
+	client PRReviewClient
 }
 
-func NewPublisher(client IssueCommentClient) *Publisher {
+func NewPublisher(client PRReviewClient) *Publisher {
 	return &Publisher{client: client}
 }
 
@@ -138,7 +138,11 @@ func (p *Publisher) Publish(ctx context.Context, owner, repo string, prNumber in
 	formatter := NewFormatter(owner, repo, prNumber)
 	body := formatter.Format(result)
 
-	comment := &github.IssueComment{Body: &body}
-	_, _, err := p.client.CreateComment(ctx, owner, repo, prNumber, comment)
+	event := "COMMENT"
+	review := &github.PullRequestReviewRequest{
+		Body:  &body,
+		Event: &event,
+	}
+	_, _, err := p.client.CreateReview(ctx, owner, repo, prNumber, review)
 	return err
 }
