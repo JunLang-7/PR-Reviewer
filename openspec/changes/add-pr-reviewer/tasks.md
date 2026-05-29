@@ -40,28 +40,28 @@
 
 ## Phase 3: AI Analysis Pipeline
 
-- [ ] **3.1** Implement Claude API client wrapper
+- [x] **3.1** Implement Claude API client wrapper
   - Init client with API key
   - Generic `Chat(prompt)` method
   - Error handling & retry
 
-- [ ] **3.2** Implement Stage 1: PR Summary (Haiku)
+- [x] **3.2** Implement Stage 1: PR Summary (Haiku)
   - Prompt: summarize what this PR does, impact scope
   - Model: `claude-haiku-4-5`
   - Output: 3-5 sentence Chinese summary + affected paths
 
-- [ ] **3.3** Implement Stage 2: Risk Identification (Sonnet)
+- [x] **3.3** Implement Stage 2: Risk Identification (Sonnet)
   - Prompt: identify security bugs, logic errors, concurrency issues, breaking changes
   - Model: `claude-sonnet-4-6`
   - Output: structured risk list (title, file:line, severity, confidence, description, fix suggestion)
 
-- [ ] **3.4** Implement Stage 3: Review Suggestions (conditional, Sonnet)
+- [x] **3.4** Implement Stage 3: Review Suggestions (conditional, Sonnet)
   - Prompt: detailed code improvement suggestions at line level
   - Model: `claude-sonnet-4-6`
   - Condition: small PR only (see 2.3)
   - Output: line-specific improvement suggestions
 
-- [ ] **3.5** Implement pipeline orchestrator
+- [x] **3.5** Implement pipeline orchestrator
   - Run Stage 1 + 2 sequentially (Stage 2 may use Stage 1 output)
   - Run Stage 3 conditionally
   - Collect all results into structured format
@@ -69,38 +69,38 @@
 
 ## Phase 4: Comment Publishing
 
-- [ ] **4.1** Implement comment formatter
+- [x] **4.1** Implement comment formatter
   - Markdown template with severity-colored sections
   - Code blocks with language hints
   - Links to source lines on GitHub
   - Timestamp and mode indicator
 
-- [ ] **4.2** Implement comment publisher
+- [x] **4.2** Implement comment publisher
   - POST to PR issues/comments API
   - Handle comment body size limits
   - Add "AI Reviewer" identifier footer
 
-- [ ] **4.3** Handle PR update (synchronize) behavior
+- [x] **4.3** Handle PR update (synchronize) behavior
   - Post new comment (don't edit old one)
   - Include incremental diff context in new comment
 
 ## Phase 5: Integration & Testing
 
-- [ ] **5.1** Wire up full flow in main.go
+- [x] **5.1** Wire up full flow in main.go
   - HTTP server with `/webhook` endpoint
   - Background processing pipeline
   - Graceful shutdown
 
-- [ ] **5.2** Create ngrok setup guide
+- [x] **5.2** Create ngrok setup guide
   - `ngrok http 8080`
   - GitHub App webhook URL configuration steps
 
-- [ ] **5.3** End-to-end smoke test
+- [x] **5.3** End-to-end smoke test
   - Create test PR, verify comment appears
   - Push update, verify new comment appears
   - Test large PR behavior (20+ files)
 
-- [ ] **5.4** Error handling polish
+- [x] **5.4** Error handling polish
   - Logging for all failure modes
   - Meaningful error comments on PR when analysis fails
   - Rate limit handling
