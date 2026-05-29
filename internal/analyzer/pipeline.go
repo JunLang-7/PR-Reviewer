@@ -6,11 +6,6 @@ import (
 	"strings"
 )
 
-const (
-	modelHaiku  = "claude-haiku-4-5"
-	modelSonnet = "claude-sonnet-4-6"
-)
-
 type PipelineInput struct {
 	Diff           string
 	FileContents   map[string]string
@@ -18,11 +13,13 @@ type PipelineInput struct {
 }
 
 type Pipeline struct {
-	llm LLMClient
+	llm         LLMClient
+	modelFast   string
+	modelPower  string
 }
 
-func NewPipeline(llm LLMClient) *Pipeline {
-	return &Pipeline{llm: llm}
+func NewPipeline(llm LLMClient, modelFast, modelPower string) *Pipeline {
+	return &Pipeline{llm: llm, modelFast: modelFast, modelPower: modelPower}
 }
 
 func (p *Pipeline) Run(ctx context.Context, input PipelineInput) (*AnalysisResult, error) {
@@ -55,7 +52,7 @@ func (p *Pipeline) Run(ctx context.Context, input PipelineInput) (*AnalysisResul
 
 func (p *Pipeline) runSummary(ctx context.Context, input PipelineInput) (string, error) {
 	prompt := input.buildSummaryPrompt()
-	resp, err := p.llm.Chat(ctx, modelHaiku, systemPromptSummary, prompt)
+	resp, err := p.llm.Chat(ctx, p.modelFast, systemPromptSummary, prompt)
 	if err != nil {
 		return "", fmt.Errorf("stage 1 summary: %w", err)
 	}
@@ -64,7 +61,7 @@ func (p *Pipeline) runSummary(ctx context.Context, input PipelineInput) (string,
 
 func (p *Pipeline) runRiskScan(ctx context.Context, input PipelineInput) ([]Risk, error) {
 	prompt := input.buildRiskPrompt()
-	resp, err := p.llm.Chat(ctx, modelSonnet, systemPromptRisk, prompt)
+	resp, err := p.llm.Chat(ctx, p.modelPower, systemPromptRisk, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("stage 2 risk scan: %w", err)
 	}
@@ -73,7 +70,7 @@ func (p *Pipeline) runRiskScan(ctx context.Context, input PipelineInput) ([]Risk
 
 func (p *Pipeline) runSuggestions(ctx context.Context, input PipelineInput, risks []Risk) ([]Suggestion, error) {
 	prompt := input.buildSuggestionPrompt(risks)
-	resp, err := p.llm.Chat(ctx, modelSonnet, systemPromptSuggestion, prompt)
+	resp, err := p.llm.Chat(ctx, p.modelPower, systemPromptSuggestion, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("stage 3 suggestions: %w", err)
 	}

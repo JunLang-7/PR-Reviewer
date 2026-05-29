@@ -27,7 +27,7 @@ func TestPipeline_Run_AllStages(t *testing.T) {
 		},
 	}
 
-	pipeline := NewPipeline(mock)
+	pipeline := NewPipeline(mock, "fast-model", "power-model")
 	result, err := pipeline.Run(context.Background(), PipelineInput{
 		Diff:            "mock diff content",
 		FileContents:    map[string]string{"main.go": "package main"},
@@ -56,7 +56,7 @@ func TestPipeline_Run_SkipsStage3(t *testing.T) {
 		},
 	}
 
-	pipeline := NewPipeline(mock)
+	pipeline := NewPipeline(mock, "fast-model", "power-model")
 	result, err := pipeline.Run(context.Background(), PipelineInput{
 		Diff:           "mock diff",
 		FileContents:   map[string]string{"a.go": "code"},
@@ -79,7 +79,7 @@ func TestPipeline_Run_PartialFailure_Stage2(t *testing.T) {
 		},
 	}
 
-	pipeline := NewPipeline(mock)
+	pipeline := NewPipeline(mock, "fast-model", "power-model")
 	result, err := pipeline.Run(context.Background(), PipelineInput{
 		Diff:           "mock diff",
 		FileContents:   map[string]string{"a.go": "code"},

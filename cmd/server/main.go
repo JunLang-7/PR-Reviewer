@@ -22,12 +22,11 @@ func main() {
 
 	// Initialize components
 	ghAppClient := github.NewClient(cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
-	llmClient := analyzer.NewAnthropicClient(cfg.AnthropicAPIKey)
-	pipeline := analyzer.NewPipeline(llmClient)
+	llmClient := analyzer.NewAnthropicClient(cfg.LLMAPIKey, cfg.LLMBaseURL)
+	pipeline := analyzer.NewPipeline(llmClient, cfg.LLMModelFast, cfg.LLMModelPowerful)
 	webhookHandler := github.NewWebhookHandler(cfg.GitHubWebhookSecret)
 
 	// The server creates per-request GitHub clients from installation IDs.
-	// For demo, wire a basic server that will get full client injection later.
 	_ = ghAppClient
 	_ = pipeline
 	_ = prcontext.NewBuilder
@@ -36,7 +35,8 @@ func main() {
 	srv := server.New(nil, nil, nil, webhookHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
-	log.Printf("PR Reviewer starting on %s", addr)
+	log.Printf("PR Reviewer starting on %s (LLM: %s, models: %s/%s)",
+		addr, cfg.LLMBaseURL, cfg.LLMModelFast, cfg.LLMModelPowerful)
 	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
