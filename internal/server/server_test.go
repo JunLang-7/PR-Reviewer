@@ -62,7 +62,7 @@ func newTestServer() (*Server, *mockCommentClient) {
 	pub := comment.NewPublisher(mockCC)
 	srv := New(
 		prcontext.NewBuilder(&mockGHClient{}),
-		analyzer.NewPipeline(&mockLLM{}),
+		analyzer.NewPipeline(&mockLLM{}, "fast", "power"),
 		pub,
 		github.NewWebhookHandler(testSecret),
 	)

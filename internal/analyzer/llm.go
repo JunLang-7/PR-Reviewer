@@ -11,8 +11,12 @@ type anthropicClient struct {
 	client *anthropic.Client
 }
 
-func NewAnthropicClient(apiKey string) LLMClient {
-	c := anthropic.NewClient(option.WithAPIKey(apiKey))
+func NewAnthropicClient(apiKey, baseURL string) LLMClient {
+	opts := []option.RequestOption{option.WithAPIKey(apiKey)}
+	if baseURL != "" && baseURL != "https://api.anthropic.com" {
+		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	c := anthropic.NewClient(opts...)
 	return &anthropicClient{client: &c}
 }
 

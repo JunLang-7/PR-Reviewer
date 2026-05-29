@@ -10,7 +10,10 @@ type Config struct {
 	GitHubAppID         int64
 	GitHubAppPrivateKey string
 	GitHubWebhookSecret string
-	AnthropicAPIKey     string
+	LLMAPIKey           string
+	LLMBaseURL          string
+	LLMModelFast        string
+	LLMModelPowerful    string
 	Port                int
 }
 
@@ -29,9 +32,12 @@ func Load() (*Config, error) {
 	if webhookSecret == "" {
 		missing = append(missing, "GITHUB_WEBHOOK_SECRET")
 	}
-	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	apiKey := os.Getenv("LLM_API_KEY")
 	if apiKey == "" {
-		missing = append(missing, "ANTHROPIC_API_KEY")
+		apiKey = os.Getenv("ANTHROPIC_API_KEY") // backward compat
+	}
+	if apiKey == "" {
+		missing = append(missing, "LLM_API_KEY or ANTHROPIC_API_KEY")
 	}
 
 	if len(missing) > 0 {
@@ -47,9 +53,20 @@ func Load() (*Config, error) {
 		GitHubAppID:         appID,
 		GitHubAppPrivateKey: privateKey,
 		GitHubWebhookSecret: webhookSecret,
-		AnthropicAPIKey:     apiKey,
+		LLMAPIKey:           apiKey,
+		LLMBaseURL:          envStr("LLM_BASE_URL", "https://api.anthropic.com"),
+		LLMModelFast:        envStr("LLM_MODEL_FAST", "claude-haiku-4-5"),
+		LLMModelPowerful:    envStr("LLM_MODEL_POWERFUL", "claude-sonnet-4-6"),
 		Port:                envInt("PORT", 8080),
 	}, nil
+}
+
+func envStr(key, defaultVal string) string {
+	s := os.Getenv(key)
+	if s == "" {
+		return defaultVal
+	}
+	return s
 }
 
 func envInt(key string, defaultVal int) int {
