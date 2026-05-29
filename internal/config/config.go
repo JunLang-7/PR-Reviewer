@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -49,9 +50,19 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid GITHUB_APP_ID: %w", err)
 	}
 
+	// If privateKey looks like a file path, read the file content
+	keyContent := privateKey
+	if strings.HasPrefix(privateKey, "/") || strings.HasSuffix(privateKey, ".pem") {
+		data, err := os.ReadFile(privateKey)
+		if err == nil {
+			keyContent = string(data)
+		}
+		// If file doesn't exist, treat as inline key content
+	}
+
 	return &Config{
 		GitHubAppID:         appID,
-		GitHubAppPrivateKey: privateKey,
+		GitHubAppPrivateKey: keyContent,
 		GitHubWebhookSecret: webhookSecret,
 		LLMAPIKey:           apiKey,
 		LLMBaseURL:          envStr("LLM_BASE_URL", "https://api.anthropic.com"),
@@ -62,7 +73,7 @@ func Load() (*Config, error) {
 }
 
 func envStr(key, defaultVal string) string {
-	s := os.Getenv(key)
+	s := strings.TrimSpace(os.Getenv(key))
 	if s == "" {
 		return defaultVal
 	}

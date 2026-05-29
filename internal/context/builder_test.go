@@ -13,7 +13,7 @@ type mockRepoClient struct {
 	contents      map[string]*github.RepositoryContent
 }
 
-func (m *mockRepoClient) CompareCommits(ctx context.Context, owner, repo, base, head string) (*github.CommitsComparison, *github.Response, error) {
+func (m *mockRepoClient) CompareCommits(ctx context.Context, owner, repo, base, head string, opts *github.ListOptions) (*github.CommitsComparison, *github.Response, error) {
 	return m.compareResult, nil, nil
 }
 

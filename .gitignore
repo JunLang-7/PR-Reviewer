@@ -26,6 +26,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+prreviewer-app.2026-05-29.private-key.pem
 
 # Go workspace
 go.work
