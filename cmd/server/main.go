@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
+
 	"github.com/junlang/PRReviewer/internal/analyzer"
 	"github.com/junlang/PRReviewer/internal/comment"
 	prcontext "github.com/junlang/PRReviewer/internal/context"
@@ -15,6 +17,9 @@ import (
 )
 
 func main() {
+	// Load .env file if present (silently skip if not found)
+	_ = godotenv.Load()
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
