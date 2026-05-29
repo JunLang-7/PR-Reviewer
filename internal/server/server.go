@@ -126,8 +126,22 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 	// Step 4: Publish comment
 	log.Printf("[%s/%s #%d] 步骤4: 发布评论...", info.Owner, info.Repo, info.PRNumber)
 	publisher := comment.NewPublisher(ghClient.Issues)
-	if err := publisher.Publish(ctx, info.Owner, info.Repo, info.PRNumber, result); err != nil {
-		log.Printf("[%s/%s #%d] 步骤4 失败: %v", info.Owner, info.Repo, info.PRNumber, err)
+	err = publisher.Publish(ctx, info.Owner, info.Repo, info.PRNumber, result)
+	if err != nil {
+		log.Printf("[%s/%s #%d] 步骤4 错误详情: %v", info.Owner, info.Repo, info.PRNumber, err)
+
+		// Diagnostic: try a minimal comment to isolate the issue
+		testBody := "test comment"
+		testComment := &github.IssueComment{Body: &testBody}
+		_, resp, testErr := ghClient.Issues.CreateComment(ctx, info.Owner, info.Repo, info.PRNumber, testComment)
+		if testErr != nil {
+			log.Printf("[%s/%s #%d] 步骤4 最小测试也失败: %v", info.Owner, info.Repo, info.PRNumber, testErr)
+			if resp != nil {
+				log.Printf("[%s/%s #%d] 步骤4 HTTP 状态: %d, 头信息: %v", info.Owner, info.Repo, info.PRNumber, resp.StatusCode, resp.Header)
+			}
+		} else {
+			log.Printf("[%s/%s #%d] 步骤4 最小测试成功 — 问题可能在于评论内容或格式", info.Owner, info.Repo, info.PRNumber)
+		}
 		return
 	}
 	log.Printf("[%s/%s #%d] 步骤4: 评论已发布", info.Owner, info.Repo, info.PRNumber)
