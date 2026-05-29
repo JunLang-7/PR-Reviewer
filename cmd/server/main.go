@@ -6,33 +6,28 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
+
 	"github.com/junlang/PRReviewer/internal/analyzer"
-	"github.com/junlang/PRReviewer/internal/comment"
-	prcontext "github.com/junlang/PRReviewer/internal/context"
 	"github.com/junlang/PRReviewer/internal/config"
 	"github.com/junlang/PRReviewer/internal/github"
 	"github.com/junlang/PRReviewer/internal/server"
 )
 
 func main() {
+	_ = godotenv.Load()
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
 
-	// Initialize components
-	ghAppClient := github.NewClient(cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
+	appClient := github.NewClient(cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
 	llmClient := analyzer.NewAnthropicClient(cfg.LLMAPIKey, cfg.LLMBaseURL)
 	pipeline := analyzer.NewPipeline(llmClient, cfg.LLMModelFast, cfg.LLMModelPowerful)
 	webhookHandler := github.NewWebhookHandler(cfg.GitHubWebhookSecret)
 
-	// The server creates per-request GitHub clients from installation IDs.
-	_ = ghAppClient
-	_ = pipeline
-	_ = prcontext.NewBuilder
-	_ = comment.NewPublisher
-
-	srv := server.New(nil, nil, nil, webhookHandler)
+	srv := server.New(appClient, pipeline, webhookHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("PR Reviewer starting on %s (LLM: %s, models: %s/%s)",

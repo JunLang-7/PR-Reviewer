@@ -9,7 +9,7 @@ import (
 // RepositoryClient abstracts GitHub API calls needed for context building.
 // This allows mocking in tests.
 type RepositoryClient interface {
-	CompareCommits(ctx context.Context, owner, repo, base, head string) (*github.CommitsComparison, *github.Response, error)
+	CompareCommits(ctx context.Context, owner, repo, base, head string, opts *github.ListOptions) (*github.CommitsComparison, *github.Response, error)
 	GetContents(ctx context.Context, owner, repo, path string, opts *github.RepositoryContentGetOptions) (*github.RepositoryContent, []*github.RepositoryContent, *github.Response, error)
 }
 
@@ -69,7 +69,7 @@ func diffLines(patch string) int {
 }
 
 func (b *Builder) Build(ctx context.Context, owner, repo, baseSHA, headSHA string) (*PRContext, error) {
-	comparison, _, err := b.client.CompareCommits(ctx, owner, repo, baseSHA, headSHA)
+	comparison, _, err := b.client.CompareCommits(ctx, owner, repo, baseSHA, headSHA, nil)
 	if err != nil {
 		return nil, err
 	}
