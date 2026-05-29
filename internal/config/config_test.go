@@ -103,13 +103,13 @@ func TestLoad_MissingRequiredVar(t *testing.T) {
 				}
 			}()
 
-			// requireEnv panics, so we need recover
-			defer func() {
-				if r := recover(); r == nil {
-					t.Error("expected panic, got none")
-				}
-			}()
-			Load()
+			cfg, err := Load()
+			if err == nil {
+				t.Error("expected error for missing env var, got nil")
+			}
+			if cfg != nil {
+				t.Error("expected nil config on error")
+			}
 		})
 	}
 }
