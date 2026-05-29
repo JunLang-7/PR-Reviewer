@@ -29,8 +29,3 @@ func (c *Client) NewInstallationClient(ctx context.Context, installationID int64
 	}
 	return github.NewClient(&http.Client{Transport: tr, Timeout: 30 * time.Second}), nil
 }
-
-// For app-level API calls (not specific to an installation)
-func (c *Client) NewAppClient(ctx context.Context) (*github.Client, error) {
-	return github.NewClient(nil), nil
-}
