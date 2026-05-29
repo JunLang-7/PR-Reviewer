@@ -3,6 +3,7 @@ package analyzer
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -140,17 +141,197 @@ func truncate(s string, maxLen int) string {
 }
 
 func parseRiskResponse(resp string) []Risk {
-	if resp == "" || resp == "---" {
+	if resp == "" {
 		return nil
 	}
-	return []Risk{
-		{
-			Title:       "AI 分析暂不可用",
-			Severity:    "warning",
-			Confidence:  "low",
-			Description: resp,
-		},
+
+	var risks []Risk
+	sections := []struct {
+		marker   string
+		severity string
+	}{
+		{"### Critical", "critical"},
+		{"### Warning", "warning"},
+		{"### Suggestion", "suggestion"},
 	}
+
+	for _, sec := range sections {
+		content := extractSection(resp, sec.marker)
+		if isEmpty(content) {
+			continue
+		}
+		risks = append(risks, parseRiskItems(content, sec.severity)...)
+	}
+
+	return risks
+}
+
+func extractSection(resp, marker string) string {
+	idx := strings.Index(resp, marker)
+	if idx < 0 {
+		return ""
+	}
+	content := resp[idx+len(marker):]
+
+	// Stop at next section marker
+	for _, m := range []string{"\n### Critical", "\n### Warning", "\n### Suggestion", "\n---"} {
+		if i := strings.Index(content, m); i >= 0 {
+			content = content[:i]
+			break
+		}
+	}
+	return strings.TrimSpace(content)
+}
+
+func isEmpty(content string) bool {
+	c := strings.TrimSpace(content)
+	return c == "" || c == "（无）" || c == "(无)" || c == "无"
+}
+
+func parseRiskItems(content, severity string) []Risk {
+	var risks []Risk
+
+	// Ensure content starts with a bullet delimiter for consistent splitting
+	if strings.HasPrefix(content, "- ") || strings.HasPrefix(content, "* ") {
+		content = "\n" + content
+	}
+	bullets := strings.Split(content, "\n- ")
+	if len(bullets) > 1 {
+		for _, bullet := range bullets {
+			bullet = strings.TrimSpace(bullet)
+			if bullet == "" || bullet == "（无）" || bullet == "(无)" {
+				continue
+			}
+			r := parseBulletRisk(bullet, severity)
+			if r != nil {
+				risks = append(risks, *r)
+			}
+		}
+		return risks
+	}
+
+	// Fallback: treat entire section as one risk
+	risks = append(risks, Risk{
+		Title:       extractTitle(content),
+		Severity:    severity,
+		Confidence:  extractConfidence(content),
+		Description: content,
+		File:        extractFile(content),
+		Line:        extractLine(content),
+	})
+	return risks
+}
+
+func parseBulletRisk(bullet, severity string) *Risk {
+	// Find first newline to split headline from description
+	headline := bullet
+	description := ""
+	idx := strings.Index(bullet, "\n")
+	if idx >= 0 {
+		headline = bullet[:idx]
+		description = strings.TrimSpace(bullet[idx+1:])
+	}
+	headline = strings.TrimSpace(headline)
+	headline = strings.TrimPrefix(headline, "- ")
+	headline = strings.TrimPrefix(headline, "* ")
+	// Remove any leading newline
+	if strings.HasPrefix(headline, "\n") {
+		headline = headline[1:]
+	}
+
+	fixSuggestion := ""
+	if description != "" {
+		if i := strings.Index(description, "建议修复"); i >= 0 {
+			fixSuggestion = strings.TrimSpace(description[i:])
+			fixSuggestion = strings.TrimPrefix(fixSuggestion, "建议修复")
+			fixSuggestion = strings.TrimPrefix(fixSuggestion, "：")
+			fixSuggestion = strings.TrimPrefix(fixSuggestion, ":")
+			fixSuggestion = strings.TrimSpace(fixSuggestion)
+			description = strings.TrimSpace(description[:i])
+		}
+	}
+
+	// Extract title from **...** in headline
+	title := extractTitle(headline)
+	file := extractFile(headline)
+	line := extractLine(headline)
+	confidence := extractConfidence(headline)
+
+	return &Risk{
+		Title:         title,
+		File:          file,
+		Line:          line,
+		Severity:      severity,
+		Confidence:    confidence,
+		Description:   description,
+		FixSuggestion: fixSuggestion,
+	}
+}
+
+func extractTitle(text string) string {
+	start := strings.Index(text, "**")
+	if start < 0 {
+		// Use first 60 chars as title
+		if len(text) > 60 {
+			return text[:60] + "..."
+		}
+		return text
+	}
+	end := strings.Index(text[start+2:], "**")
+	if end < 0 {
+		return text[start+2:]
+	}
+	return text[start+2 : start+2+end]
+}
+
+func extractConfidence(text string) string {
+	for _, level := range []string{"high", "medium", "low"} {
+		if strings.Contains(strings.ToLower(text), "置信度: "+level) ||
+			strings.Contains(strings.ToLower(text), "置信度:"+level) ||
+			strings.Contains(strings.ToLower(text), "置信度："+level) {
+			return level
+		}
+	}
+	return "medium"
+}
+
+func extractFile(text string) string {
+	// Look for `file:line` pattern
+	start := strings.Index(text, "`")
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(text[start+1:], "`")
+	if end < 0 {
+		return ""
+	}
+	inner := text[start+1 : start+1+end]
+
+	// Split by : to get file and line
+	if colon := strings.LastIndex(inner, ":"); colon >= 0 {
+		return inner[:colon]
+	}
+	return inner
+}
+
+func extractLine(text string) int {
+	start := strings.Index(text, "`")
+	if start < 0 {
+		return 0
+	}
+	end := strings.Index(text[start+1:], "`")
+	if end < 0 {
+		return 0
+	}
+	inner := text[start+1 : start+1+end]
+
+	if colon := strings.LastIndex(inner, ":"); colon >= 0 {
+		lineStr := inner[colon+1:]
+		if n, err := strconv.Atoi(lineStr); err == nil {
+			return n
+		}
+	}
+	return 0
 }
 
 func parseSuggestionResponse(resp string) []Suggestion {
