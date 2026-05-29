@@ -97,17 +97,6 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 	}
 	log.Printf("[%s/%s #%d] 步骤1: 完成", info.Owner, info.Repo, info.PRNumber)
 
-	// Diagnostic: check installation permissions
-	install, _, err := ghClient.Apps.GetInstallation(ctx, info.InstallationID)
-	if err != nil {
-		log.Printf("[%s/%s #%d] 诊断: 无法获取安装信息: %v", info.Owner, info.Repo, info.PRNumber, err)
-	} else if install.Permissions != nil {
-		p := install.Permissions
-		log.Printf("[%s/%s #%d] 诊断: 安装权限 — issues=%s contents=%s pull_requests=%s metadata=%s",
-			info.Owner, info.Repo, info.PRNumber,
-			strPtr(p.Issues), strPtr(p.Contents), strPtr(p.PullRequests), strPtr(p.Metadata))
-	}
-
 	// Step 2: Build context
 	log.Printf("[%s/%s #%d] 步骤2: 获取 PR diff 和文件内容...", info.Owner, info.Repo, info.PRNumber)
 	builder := prcontext.NewBuilder(ghClient.Repositories)
@@ -160,13 +149,6 @@ func (s *Server) postErrorComment(ctx context.Context, ghClient *github.Client, 
 	if err != nil {
 		log.Printf("post error comment failed: %v", err)
 	}
-}
-
-func strPtr(s *string) string {
-	if s == nil {
-		return "<none>"
-	}
-	return *s
 }
 
 func buildDiffString(prCtx *prcontext.PRContext) string {
