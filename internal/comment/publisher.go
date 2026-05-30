@@ -63,15 +63,6 @@ func (f *Formatter) Format(result *analyzer.AnalysisResult) string {
 		sb.WriteString("> 未发现明显风险\n\n")
 	}
 
-	// Suggestions (Stage 3)
-	if result.Suggestions != nil && len(result.Suggestions.Suggestions) > 0 {
-		sb.WriteString("---\n\n")
-		sb.WriteString("### 优化建议\n\n")
-		for _, s := range result.Suggestions.Suggestions {
-			sb.WriteString(f.formatSuggestion(s))
-		}
-	}
-
 	// Footer
 	sb.WriteString("---\n\n")
 	sb.WriteString(fmt.Sprintf("> AI Reviewer v1 · %s\n", time.Now().Format("2006-01-02 15:04:05")))
@@ -99,22 +90,9 @@ func (f *Formatter) formatRisk(r analyzer.Risk) string {
 	sb.WriteString(fmt.Sprintf("- **%s** [`%s:%d`](%s)\n", r.Title, r.File, r.Line, link))
 	sb.WriteString(fmt.Sprintf("  > %s\n", r.Description))
 	if r.FixSuggestion != "" {
-		sb.WriteString(fmt.Sprintf("  >\n  > **建议修复**: %s\n", r.FixSuggestion))
+		sb.WriteString(fmt.Sprintf("  >\n%s\n", r.FixSuggestion))
 	}
 	sb.WriteString(fmt.Sprintf("  > 置信度: %s | 严重度: %s\n\n", r.Confidence, r.Severity))
-	return sb.String()
-}
-
-func (f *Formatter) formatSuggestion(s analyzer.Suggestion) string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("- **%s:%d**\n", s.File, s.Line))
-	sb.WriteString(fmt.Sprintf("  > %s\n", s.Description))
-	if s.CodeSnippet != "" {
-		sb.WriteString("  >\n  > ```\n")
-		sb.WriteString(fmt.Sprintf("  > %s\n", s.CodeSnippet))
-		sb.WriteString("  > ```\n")
-	}
-	sb.WriteString("\n")
 	return sb.String()
 }
 

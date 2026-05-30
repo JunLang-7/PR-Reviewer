@@ -20,22 +20,18 @@ func (m *mockReviewClient) CreateReview(ctx context.Context, owner, repo string,
 	return &github.PullRequestReview{Body: review.Body}, nil, nil
 }
 
-func buildTestResult(summary string, risks []analyzer.Risk, suggestions []analyzer.Suggestion) *analyzer.AnalysisResult {
-	result := &analyzer.AnalysisResult{
+func buildTestResult(summary string, risks []analyzer.Risk) *analyzer.AnalysisResult {
+	return &analyzer.AnalysisResult{
 		Summary: &analyzer.SummaryResult{Summary: summary},
 		Risks:   &analyzer.RiskResult{Risks: risks},
 	}
-	if suggestions != nil {
-		result.Suggestions = &analyzer.SuggestionResult{Suggestions: suggestions}
-	}
-	return result
 }
 
 func TestFormatComment_ContainsSections(t *testing.T) {
 	result := buildTestResult("重构用户模块", []analyzer.Risk{
 		{Title: "SQL 注入", File: "db.go", Line: 42, Severity: "critical", Confidence: "high", Description: "直接拼接 SQL", FixSuggestion: "使用参数化查询"},
 		{Title: "错误忽略", File: "api.go", Line: 15, Severity: "warning", Confidence: "medium", Description: "err 未检查"},
-	}, nil)
+	})
 
 	formatter := NewFormatter("testowner", "testrepo", 1)
 	body := formatter.Format(result)
@@ -61,29 +57,11 @@ func TestFormatComment_ContainsSections(t *testing.T) {
 }
 
 func TestFormatComment_OnlySummaryNoRisks(t *testing.T) {
-	result := buildTestResult("修复 typo", nil, nil)
-
+	result := buildTestResult("修复 typo", nil)
 	formatter := NewFormatter("o", "r", 1)
 	body := formatter.Format(result)
-
 	if !strings.Contains(body, "修复 typo") {
 		t.Error("should contain summary")
-	}
-	if !strings.Contains(body, "无风险问题") || !strings.Contains(body, "风险") {
-		// At minimum, there should be something about risks
-	}
-}
-
-func TestFormatComment_WithSuggestions(t *testing.T) {
-	result := buildTestResult("optimization", nil, []analyzer.Suggestion{
-		{File: "main.go", Line: 10, Description: "使用 strings.Builder 替代 +=", CodeSnippet: "var b strings.Builder"},
-	})
-
-	formatter := NewFormatter("o", "r", 1)
-	body := formatter.Format(result)
-
-	if !strings.Contains(body, "优化建议") && !strings.Contains(body, "Suggestion") {
-		t.Error("should contain suggestions section")
 	}
 }
 
@@ -92,7 +70,7 @@ func TestPublisher_PostComment(t *testing.T) {
 	pub := NewPublisher(mock)
 	ctx := context.Background()
 
-	result := buildTestResult("test summary", nil, nil)
+	result := buildTestResult("test summary", nil)
 	err := pub.Publish(ctx, "owner", "repo", 1, result)
 
 	if err != nil {
@@ -111,7 +89,7 @@ func TestPublisher_PostComment(t *testing.T) {
 }
 
 func TestFormatComment_Timestamp(t *testing.T) {
-	result := buildTestResult("test", nil, nil)
+	result := buildTestResult("test", nil)
 	formatter := NewFormatter("o", "r", 1)
 	body := formatter.Format(result)
 

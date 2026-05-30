@@ -8,15 +8,14 @@ import (
 )
 
 type PipelineInput struct {
-	Diff           string
-	FileContents   map[string]string
-	Stage3Eligible bool
+	Diff         string
+	FileContents map[string]string
 }
 
 type Pipeline struct {
-	llm         LLMClient
-	modelFast   string
-	modelPower  string
+	llm        LLMClient
+	modelFast  string
+	modelPower string
 }
 
 func NewPipeline(llm LLMClient, modelFast, modelPower string) *Pipeline {
@@ -39,15 +38,6 @@ func (p *Pipeline) Run(ctx context.Context, input PipelineInput) (*AnalysisResul
 		result.Risks = &RiskResult{Risks: risks}
 	}
 
-	if input.Stage3Eligible {
-		suggestions, err := p.runSuggestions(ctx, input, risks)
-		if err != nil {
-			result.Suggestions = &SuggestionResult{Error: err}
-		} else {
-			result.Suggestions = &SuggestionResult{Suggestions: suggestions}
-		}
-	}
-
 	return result, nil
 }
 
@@ -67,15 +57,6 @@ func (p *Pipeline) runRiskScan(ctx context.Context, input PipelineInput) ([]Risk
 		return nil, fmt.Errorf("stage 2 risk scan: %w", err)
 	}
 	return parseRiskResponse(resp), nil
-}
-
-func (p *Pipeline) runSuggestions(ctx context.Context, input PipelineInput, risks []Risk) ([]Suggestion, error) {
-	prompt := input.buildSuggestionPrompt(risks)
-	resp, err := p.llm.Chat(ctx, p.modelPower, systemPromptSuggestion, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("stage 3 suggestions: %w", err)
-	}
-	return parseSuggestionResponse(resp), nil
 }
 
 func codeBlock(lang, content string) string {
@@ -105,26 +86,6 @@ func (input PipelineInput) buildRiskPrompt() string {
 	sb.WriteString(codeBlock("diff", truncate(input.Diff, 5000)))
 
 	sb.WriteString("\n## 变更文件完整内容\n")
-	for path, content := range input.FileContents {
-		sb.WriteString(fmt.Sprintf("\n### %s\n", path))
-		sb.WriteString(codeBlock("", truncate(content, 3000)))
-	}
-
-	return sb.String()
-}
-
-func (input PipelineInput) buildSuggestionPrompt(risks []Risk) string {
-	var sb strings.Builder
-	sb.WriteString("请对以下 PR 变更提供具体的代码改进建议：\n\n")
-
-	if len(risks) > 0 {
-		sb.WriteString("## 已识别的风险\n")
-		for _, r := range risks {
-			sb.WriteString(fmt.Sprintf("- [%s] %s (%s:%d)\n", r.Severity, r.Title, r.File, r.Line))
-		}
-		sb.WriteString("\n")
-	}
-
 	for path, content := range input.FileContents {
 		sb.WriteString(fmt.Sprintf("\n### %s\n", path))
 		sb.WriteString(codeBlock("", truncate(content, 3000)))
@@ -173,7 +134,6 @@ func extractSection(resp, marker string) string {
 	}
 	content := resp[idx+len(marker):]
 
-	// Stop at next section marker
 	for _, m := range []string{"\n### Critical", "\n### Warning", "\n### Suggestion", "\n---"} {
 		if i := strings.Index(content, m); i >= 0 {
 			content = content[:i]
@@ -191,7 +151,6 @@ func isEmpty(content string) bool {
 func parseRiskItems(content, severity string) []Risk {
 	var risks []Risk
 
-	// Ensure content starts with a bullet delimiter for consistent splitting
 	if strings.HasPrefix(content, "- ") || strings.HasPrefix(content, "* ") {
 		content = "\n" + content
 	}
@@ -210,7 +169,6 @@ func parseRiskItems(content, severity string) []Risk {
 		return risks
 	}
 
-	// Fallback: treat entire section as one risk
 	risks = append(risks, Risk{
 		Title:       extractTitle(content),
 		Severity:    severity,
@@ -223,7 +181,6 @@ func parseRiskItems(content, severity string) []Risk {
 }
 
 func parseBulletRisk(bullet, severity string) *Risk {
-	// Find first newline to split headline from description
 	headline := bullet
 	description := ""
 	idx := strings.Index(bullet, "\n")
@@ -234,7 +191,6 @@ func parseBulletRisk(bullet, severity string) *Risk {
 	headline = strings.TrimSpace(headline)
 	headline = strings.TrimPrefix(headline, "- ")
 	headline = strings.TrimPrefix(headline, "* ")
-	// Remove any leading newline
 	if strings.HasPrefix(headline, "\n") {
 		headline = headline[1:]
 	}
@@ -251,7 +207,6 @@ func parseBulletRisk(bullet, severity string) *Risk {
 		}
 	}
 
-	// Extract title from **...** in headline
 	title := extractTitle(headline)
 	file := extractFile(headline)
 	line := extractLine(headline)
@@ -271,7 +226,6 @@ func parseBulletRisk(bullet, severity string) *Risk {
 func extractTitle(text string) string {
 	start := strings.Index(text, "**")
 	if start < 0 {
-		// Use first 60 chars as title
 		if len(text) > 60 {
 			return text[:60] + "..."
 		}
@@ -296,7 +250,6 @@ func extractConfidence(text string) string {
 }
 
 func extractFile(text string) string {
-	// Look for `file:line` pattern
 	start := strings.Index(text, "`")
 	if start < 0 {
 		return ""
@@ -306,8 +259,6 @@ func extractFile(text string) string {
 		return ""
 	}
 	inner := text[start+1 : start+1+end]
-
-	// Split by : to get file and line
 	if colon := strings.LastIndex(inner, ":"); colon >= 0 {
 		return inner[:colon]
 	}
@@ -324,7 +275,6 @@ func extractLine(text string) int {
 		return 0
 	}
 	inner := text[start+1 : start+1+end]
-
 	if colon := strings.LastIndex(inner, ":"); colon >= 0 {
 		lineStr := inner[colon+1:]
 		if n, err := strconv.Atoi(lineStr); err == nil {
@@ -332,13 +282,6 @@ func extractLine(text string) int {
 		}
 	}
 	return 0
-}
-
-func parseSuggestionResponse(resp string) []Suggestion {
-	if resp == "" {
-		return nil
-	}
-	return nil
 }
 
 const systemPromptSummary = "你是一个代码评审助手。你的任务是用中文简洁地总结 PR 变更内容。\n" +
@@ -349,27 +292,24 @@ const systemPromptSummary = "你是一个代码评审助手。你的任务是用
 
 const systemPromptRisk = "你是一个代码安全与质量评审专家。请识别以下 PR 中的潜在风险。\n" +
 	"重点关注：\n" +
-	"- 安全漏洞（SQL 注入、XSS、密钥泄漏、权限绕过）\n" +
+	"- 安全漏洞（SQL 注入、XSS、密钥泄漏、权限绕过、路径遍历）\n" +
 	"- 逻辑错误（空指针、边界条件、错误处理缺失）\n" +
-	"- 并发问题（竞态条件、死锁）\n" +
+	"- 并发问题（竞态条件、死锁、资源泄漏）\n" +
 	"- 破坏性变更（接口不兼容、API 签名变更）\n" +
 	"\n" +
 	"请按以下格式回复：\n" +
 	"### Critical\n" +
 	"- **标题** `文件:行号` 置信度: high/medium/low\n" +
-	"  描述和建议修复\n" +
+	"\n" +
+	"  In `文件路径`:\n" +
+	"  > 原始代码\n" +
+	"\n" +
+	"  描述与修复说明。涉及代码变更时，使用 >- 标记删除的行，>+ 标记新增的行：\n" +
+	"  >- 要删除的代码\n" +
+	"  >+ 替换为的代码\n" +
 	"\n" +
 	"### Warning\n" +
 	"...\n" +
 	"\n" +
 	"### Suggestion\n" +
 	"..."
-
-const systemPromptSuggestion = "你是一个代码改进顾问。请对以下代码提供具体的优化建议。\n" +
-	"重点关注：\n" +
-	"- 代码可读性和命名\n" +
-	"- 性能优化\n" +
-	"- 测试覆盖\n" +
-	"- 最佳实践\n" +
-	"\n" +
-	"请提供具体的行级建议和代码示例。"
