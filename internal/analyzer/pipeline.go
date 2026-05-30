@@ -159,7 +159,7 @@ func parseRiskBlock(block string) *Risk {
 		return nil
 	}
 
-	file, _ := parseFileHeader(strings.TrimSpace(lines[headerIdx]))
+	file, lineNum := parseFileHeader(strings.TrimSpace(lines[headerIdx]))
 
 	bodyLines := lines[headerIdx+1:]
 
@@ -202,7 +202,7 @@ func parseRiskBlock(block string) *Risk {
 	return &Risk{
 		Title:         title,
 		File:          file,
-		Line:          0,
+		Line:          lineNum,
 		Severity:      severity,
 		Confidence:    "medium",
 		Description:   description,
