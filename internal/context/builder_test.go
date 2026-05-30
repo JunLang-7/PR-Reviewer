@@ -107,61 +107,7 @@ func TestBuilder_Build_SkipsBinaryFiles(t *testing.T) {
 	}
 }
 
-func TestBuilder_Build_Stage3Eligible_SmallPR(t *testing.T) {
-	mock := &mockRepoClient{
-		compareResult: &github.CommitsComparison{
-			Files: []*github.CommitFile{
-				{
-					Filename:  github.Ptr("a.go"),
-					Patch:     github.Ptr("@@ -1,1 +1,1 @@\n-old\n+new"),
-					Additions: github.Ptr(1),
-					Deletions: github.Ptr(1),
-					Changes:   github.Ptr(2),
-				},
-			},
-		},
-		contents: map[string]*github.RepositoryContent{
-			"a.go": {Content: github.Ptr(encodeContent("new\n"))},
-		},
-	}
 
-	b := NewBuilder(mock)
-	result, _ := b.Build(context.Background(), "o", "r", "a", "b")
-
-	if !result.Stage3Eligible {
-		t.Error("small PR should be Stage 3 eligible")
-	}
-}
-
-func TestBuilder_Build_Stage3NotEligible_ManyFiles(t *testing.T) {
-	files := []*github.CommitFile{}
-	contents := map[string]*github.RepositoryContent{}
-	for i := range 6 {
-		filename := "file" + string(rune('0'+i)) + ".go"
-		files = append(files, &github.CommitFile{
-			Filename:  github.Ptr(filename),
-			Patch:     github.Ptr("@@ -1,1 +1,1 @@\n"),
-			Additions: github.Ptr(1),
-			Deletions: github.Ptr(0),
-			Changes:   github.Ptr(1),
-		})
-		contents[filename] = &github.RepositoryContent{
-			Content: github.Ptr(encodeContent("content\n")),
-		}
-	}
-
-	mock := &mockRepoClient{
-		compareResult: &github.CommitsComparison{Files: files},
-		contents:      contents,
-	}
-
-	b := NewBuilder(mock)
-	result, _ := b.Build(context.Background(), "o", "r", "a", "b")
-
-	if result.Stage3Eligible {
-		t.Error("PR with >5 files should NOT be Stage 3 eligible")
-	}
-}
 
 func TestIsBinaryFile(t *testing.T) {
 	tests := []struct {

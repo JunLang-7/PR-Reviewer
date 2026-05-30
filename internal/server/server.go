@@ -97,35 +97,15 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 		return
 	}
 
-	// Manual trigger forces Stage 3 depth
-	stage3 := prCtx.Stage3Eligible
-	if info.Action == "comment" {
-		stage3 = true
-	}
-
 	log.Printf("[%s/%s #%d] 已获取 %d 个文件 (%d 行 diff), 开始 AI 分析...",
 		info.Owner, info.Repo, info.PRNumber, prCtx.TotalFiles, prCtx.TotalDiffLines)
 
 	result, err := s.pipeline.Run(ctx, analyzer.PipelineInput{
-		Diff:           buildDiffString(prCtx),
-		FileContents:   prCtx.FileContents,
-		Stage3Eligible: stage3,
+		Diff:         buildDiffString(prCtx),
+		FileContents: prCtx.FileContents,
 	})
 	if err != nil {
 		log.Printf("[%s/%s #%d] AI 分析异常: %v", info.Owner, info.Repo, info.PRNumber, err)
-	}
-
-	if result.Suggestions != nil {
-		n := len(result.Suggestions.Suggestions)
-		if n > 0 {
-			log.Printf("[%s/%s #%d] Stage 3: %d 条建议", info.Owner, info.Repo, info.PRNumber, n)
-		} else if result.Suggestions.Error != nil {
-			log.Printf("[%s/%s #%d] Stage 3: 异常 — %v", info.Owner, info.Repo, info.PRNumber, result.Suggestions.Error)
-		} else {
-			log.Printf("[%s/%s #%d] Stage 3: LLM 未提供建议", info.Owner, info.Repo, info.PRNumber)
-		}
-	} else {
-		log.Printf("[%s/%s #%d] Stage 3: 未触发", info.Owner, info.Repo, info.PRNumber)
 	}
 
 	publisher := comment.NewPublisher(ghClient.PullRequests)

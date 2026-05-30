@@ -30,9 +30,8 @@ type PRContext struct {
 	HeadRef          string
 	DiffFiles        []DiffFile
 	FileContents     map[string]string
-	TotalFiles       int
-	TotalDiffLines   int
-	Stage3Eligible   bool
+	TotalFiles     int
+	TotalDiffLines int
 }
 
 type Builder struct {
@@ -41,10 +40,6 @@ type Builder struct {
 
 func NewBuilder(client RepositoryClient) *Builder {
 	return &Builder{client: client}
-}
-
-func (b *Builder) eligibleForStage3(files []DiffFile, totalDiffLines int) bool {
-	return len(files) <= 5 && totalDiffLines < 500
 }
 
 func isBinaryFile(patch string) bool {
@@ -111,7 +106,6 @@ func (b *Builder) Build(ctx context.Context, owner, repo, baseSHA, headSHA strin
 		FileContents:   fileContents,
 		TotalFiles:     len(files),
 		TotalDiffLines: totalDiff,
-		Stage3Eligible: b.eligibleForStage3(files, totalDiff),
 	}, nil
 }
 
