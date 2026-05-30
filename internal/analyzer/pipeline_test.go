@@ -90,12 +90,54 @@ func TestPipelineInput_BuildRiskPrompt_ContainsCode(t *testing.T) {
 		},
 	}
 
-	prompt := input.buildRiskPrompt()
+	prompt := input.buildRiskPrompt("")
 	if !strings.Contains(prompt, "auth.go") {
 		t.Error("risk prompt should contain file name")
 	}
 	if !strings.Contains(prompt, "password") {
 		t.Error("risk prompt should contain file content")
+	}
+}
+
+func TestPipelineInput_BuildRiskPrompt_WithSummary(t *testing.T) {
+	input := PipelineInput{
+		Diff: "@@ -1 +1 @@\n-old\n+new",
+		FileContents: map[string]string{
+			"auth.go": "func login() {}",
+		},
+	}
+
+	prompt := input.buildRiskPrompt("本次 PR 重构了认证模块")
+
+	if !strings.Contains(prompt, "本次 PR 重构了认证模块") {
+		t.Error("risk prompt should contain summary text")
+	}
+	if !strings.Contains(prompt, "PR 变更摘要") {
+		t.Error("risk prompt should contain summary section header")
+	}
+	if !strings.Contains(prompt, "仅供参考") {
+		t.Error("risk prompt should contain caveat about summary")
+	}
+	if !strings.Contains(prompt, "auth.go") {
+		t.Error("risk prompt should still contain file name after summary")
+	}
+}
+
+func TestPipelineInput_BuildRiskPrompt_EmptySummary(t *testing.T) {
+	input := PipelineInput{
+		Diff: "@@ -1 +1 @@\n-old\n+new",
+		FileContents: map[string]string{
+			"auth.go": "func login() {}",
+		},
+	}
+
+	prompt := input.buildRiskPrompt("")
+
+	if strings.Contains(prompt, "PR 变更摘要") {
+		t.Error("risk prompt should not contain summary section when empty")
+	}
+	if !strings.Contains(prompt, "auth.go") {
+		t.Error("risk prompt should still contain file content")
 	}
 }
 
