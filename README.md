@@ -24,7 +24,7 @@ PR 提交 → Webhook → 获取变更上下文 → AI 分析 → 发布 Review 
 | Contents | Read |
 | Metadata | Read（自动） |
 
-订阅事件：**Pull request**
+订阅事件：**Pull request**、**Issue comment**
 
 生成 Webhook Secret 时，使用高熵随机字符串：
 
@@ -81,6 +81,16 @@ https://xxxx.ngrok-free.app/webhook
 在 GitHub App 设置页 → Install App → 选择目标仓库。
 
 然后在仓库提一个 PR，等待几秒即可看到 AI Review 评论。
+
+## 手动触发
+
+除了 PR 创建和推送时自动触发，也可以在 PR 下发评论指令手动触发：
+
+```
+@prreviewer-app review
+```
+
+手动触发会强制开启 Stage 3 深度分析。
 
 ## 配置说明
 

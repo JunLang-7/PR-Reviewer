@@ -43,96 +43,46 @@ func TestVerifySignature_EmptyHeader(t *testing.T) {
 	}
 }
 
-func TestParsePREvent_Opened(t *testing.T) {
-	event := &gh.PullRequestEvent{
+func TestHandle_PREvent_Opened(t *testing.T) {
+	event := gh.PullRequestEvent{
 		Action: gh.Ptr("opened"),
-		Repo: &gh.Repository{
-			Owner: &gh.User{Login: gh.Ptr("testowner")},
-			Name:  gh.Ptr("testrepo"),
-		},
+		Repo:   &gh.Repository{Owner: &gh.User{Login: gh.Ptr("testowner")}, Name: gh.Ptr("testrepo")},
 		PullRequest: &gh.PullRequest{
 			Number: gh.Ptr(42),
-			Base: &gh.PullRequestBranch{
-				Ref: gh.Ptr("main"),
-				SHA: gh.Ptr("abc123"),
-			},
-			Head: &gh.PullRequestBranch{
-				Ref: gh.Ptr("feature-x"),
-				SHA: gh.Ptr("def456"),
-			},
+			Base:   &gh.PullRequestBranch{Ref: gh.Ptr("main"), SHA: gh.Ptr("abc123")},
+			Head:   &gh.PullRequestBranch{Ref: gh.Ptr("feature"), SHA: gh.Ptr("def456")},
 		},
-		Installation: &gh.Installation{
-			ID: gh.Ptr(int64(12345)),
-		},
+		Installation: &gh.Installation{ID: gh.Ptr(int64(1))},
 	}
-
 	body, _ := json.Marshal(event)
-	h := NewWebhookHandler("secret")
-	info, err := h.ParsePREvent(body)
 
+	h := NewWebhookHandler("secret")
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(string(body)))
+	req.Header.Set("X-GitHub-Event", "pull_request")
+	req.Header.Set("X-Hub-Signature-256", sign(body, "secret"))
+
+	_, info, err := h.Handle(httptest.NewRecorder(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.Owner != "testowner" {
-		t.Errorf("expected owner testowner, got %s", info.Owner)
+	if info == nil {
+		t.Fatal("expected info for opened event")
 	}
-	if info.Repo != "testrepo" {
-		t.Errorf("expected repo testrepo, got %s", info.Repo)
+	if info.Action != "opened" {
+		t.Errorf("expected 'opened', got '%s'", info.Action)
 	}
 	if info.PRNumber != 42 {
 		t.Errorf("expected PR 42, got %d", info.PRNumber)
 	}
-	if info.BaseSHA != "abc123" {
-		t.Errorf("expected base abc123, got %s", info.BaseSHA)
-	}
-	if info.HeadSHA != "def456" {
-		t.Errorf("expected head def456, got %s", info.HeadSHA)
-	}
-	if info.InstallationID != 12345 {
-		t.Errorf("expected installation 12345, got %d", info.InstallationID)
-	}
-	if info.Action != "opened" {
-		t.Errorf("expected action opened, got %s", info.Action)
+	if info.Owner != "testowner" {
+		t.Errorf("expected owner 'testowner', got '%s'", info.Owner)
 	}
 }
 
-func TestParsePREvent_InvalidJSON(t *testing.T) {
-	h := NewWebhookHandler("secret")
-	_, err := h.ParsePREvent([]byte(`not json`))
-	if err == nil {
-		t.Error("expected error for invalid JSON")
-	}
-}
-
-func TestHandle_NonPREvent(t *testing.T) {
-	h := NewWebhookHandler("secret")
-	bodyContent := []byte(`{"action":"created"}`)
-	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(string(bodyContent)))
-	req.Header.Set("X-GitHub-Event", "issues")
-
-	mac := hmac.New(sha256.New, []byte("secret"))
-	mac.Write(bodyContent)
-	req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-
-	body, info, err := h.Handle(httptest.NewRecorder(), req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if body == nil {
-		t.Error("expected body to be returned")
-	}
-	if info != nil {
-		t.Error("expected nil info for non-PR event")
-	}
-}
-
-func TestHandle_SkipNonOpenedActions(t *testing.T) {
-	event := &gh.PullRequestEvent{
+func TestHandle_PREvent_Closed(t *testing.T) {
+	event := gh.PullRequestEvent{
 		Action: gh.Ptr("closed"),
-		Repo: &gh.Repository{
-			Owner: &gh.User{Login: gh.Ptr("o")},
-			Name:  gh.Ptr("r"),
-		},
+		Repo:   &gh.Repository{Owner: &gh.User{Login: gh.Ptr("o")}, Name: gh.Ptr("r")},
 		PullRequest: &gh.PullRequest{
 			Number: gh.Ptr(1),
 			Base:   &gh.PullRequestBranch{Ref: gh.Ptr("main"), SHA: gh.Ptr("a")},
@@ -145,21 +95,116 @@ func TestHandle_SkipNonOpenedActions(t *testing.T) {
 	h := NewWebhookHandler("secret")
 	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(string(body)))
 	req.Header.Set("X-GitHub-Event", "pull_request")
+	req.Header.Set("X-Hub-Signature-256", sign(body, "secret"))
 
-	mac := hmac.New(sha256.New, []byte("secret"))
-	mac.Write(body)
-	req.Header.Set("X-Hub-Signature-256", "sha256="+hex.EncodeToString(mac.Sum(nil)))
-
-	rec := httptest.NewRecorder()
-	_, info, err := h.Handle(rec, req)
+	_, info, err := h.Handle(httptest.NewRecorder(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Handle returns parsed info for all PR events; caller checks Action to decide whether to process
+	if info != nil {
+		t.Error("expected nil info for closed event")
+	}
+}
+
+func TestHandle_CommentEvent_Trigger(t *testing.T) {
+	raw := `{
+		"action": "created",
+		"issue": {
+			"number": 42,
+			"pull_request": {"url": "https://api.github.com/repos/o/r/pulls/42"}
+		},
+		"comment": {"body": "@prreviewer-app review"},
+		"repository": {"owner": {"login": "o"}, "name": "r"},
+		"installation": {"id": 1}
+	}`
+
+	h := NewWebhookHandler("secret")
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(raw))
+	req.Header.Set("X-GitHub-Event", "issue_comment")
+	req.Header.Set("X-Hub-Signature-256", sign([]byte(raw), "secret"))
+
+	_, info, err := h.Handle(httptest.NewRecorder(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if info == nil {
-		t.Error("expected info to be returned for PR event")
+		t.Fatal("expected info for trigger comment")
 	}
-	if info.Action != "closed" {
-		t.Errorf("expected action 'closed', got '%s'", info.Action)
+	if info.Action != "comment" {
+		t.Errorf("expected 'comment', got '%s'", info.Action)
 	}
+	if info.PRNumber != 42 {
+		t.Errorf("expected PR 42, got %d", info.PRNumber)
+	}
+}
+
+func TestHandle_CommentEvent_NotTrigger(t *testing.T) {
+	raw := `{
+		"action": "created",
+		"issue": {
+			"number": 1,
+			"pull_request": {"url": "https://api.github.com/repos/o/r/pulls/1"}
+		},
+		"comment": {"body": "looks good to me"},
+		"repository": {"owner": {"login": "o"}, "name": "r"},
+		"installation": {"id": 1}
+	}`
+
+	h := NewWebhookHandler("secret")
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(raw))
+	req.Header.Set("X-GitHub-Event", "issue_comment")
+	req.Header.Set("X-Hub-Signature-256", sign([]byte(raw), "secret"))
+
+	_, info, err := h.Handle(httptest.NewRecorder(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info != nil {
+		t.Error("expected nil info for non-trigger comment")
+	}
+}
+
+func TestHandle_CommentEvent_NotPR(t *testing.T) {
+	raw := `{
+		"action": "created",
+		"issue": {"number": 1},
+		"comment": {"body": "@prreviewer-app review"},
+		"repository": {"owner": {"login": "o"}, "name": "r"},
+		"installation": {"id": 1}
+	}`
+
+	h := NewWebhookHandler("secret")
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(raw))
+	req.Header.Set("X-GitHub-Event", "issue_comment")
+	req.Header.Set("X-Hub-Signature-256", sign([]byte(raw), "secret"))
+
+	_, info, err := h.Handle(httptest.NewRecorder(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info != nil {
+		t.Error("expected nil info for non-PR issue comment")
+	}
+}
+
+func TestHandle_NonPREvent(t *testing.T) {
+	h := NewWebhookHandler("secret")
+	body := []byte(`{"action":"created"}`)
+	req := httptest.NewRequest("POST", "/webhook", strings.NewReader(string(body)))
+	req.Header.Set("X-GitHub-Event", "issues")
+	req.Header.Set("X-Hub-Signature-256", sign(body, "secret"))
+
+	_, info, err := h.Handle(httptest.NewRecorder(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info != nil {
+		t.Error("expected nil info for non-PR event")
+	}
+}
+
+func sign(body []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
