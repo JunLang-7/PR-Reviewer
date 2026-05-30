@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -21,9 +23,9 @@ func NewAnthropicClient(apiKey, baseURL string) LLMClient {
 }
 
 func (c *anthropicClient) Chat(ctx context.Context, model, systemPrompt, userMessage string) (string, error) {
-	msg, err := c.client.Messages.New(ctx, anthropic.MessageNewParams{
+	stream := c.client.Messages.NewStreaming(ctx, anthropic.MessageNewParams{
 		Model:     anthropic.Model(model),
-		MaxTokens: 2048,
+		MaxTokens: 32768,
 		System: []anthropic.TextBlockParam{
 			{Text: systemPrompt},
 		},
@@ -31,14 +33,19 @@ func (c *anthropicClient) Chat(ctx context.Context, model, systemPrompt, userMes
 			anthropic.NewUserMessage(anthropic.NewTextBlock(userMessage)),
 		},
 	})
-	if err != nil {
+
+	var sb strings.Builder
+	for stream.Next() {
+		event := stream.Current()
+		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
+			sb.WriteString(event.Delta.Text)
+		}
+	}
+	if err := stream.Err(); err != nil {
 		return "", err
 	}
 
-	for _, block := range msg.Content {
-		if block.Type == "text" {
-			return block.Text, nil
-		}
-	}
-	return "", nil
+	result := sb.String()
+	fmt.Printf("[llm] response: streaming, text=%d bytes\n", len(result))
+	return result, nil
 }
