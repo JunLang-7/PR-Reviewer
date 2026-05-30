@@ -36,5 +36,5 @@
 - [x] **3.2** main.go 集成
   - 传入 App slug 到 server
 
-- [ ] **3.3** 端到端测试
-  - 在 PR 页面 Request App Review，验证 Review 出现
+- [x] **3.3** 端到端测试
+  - 在 PR 评论 @prreviewer-app review，验证 Review 出现
