@@ -115,6 +115,12 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 		log.Printf("[%s/%s #%d] AI 分析异常: %v", info.Owner, info.Repo, info.PRNumber, err)
 	}
 
+	if result.Suggestions != nil {
+		log.Printf("[%s/%s #%d] Stage 3: %d 条建议", info.Owner, info.Repo, info.PRNumber, len(result.Suggestions.Suggestions))
+	} else {
+		log.Printf("[%s/%s #%d] Stage 3: 无建议（跳过）", info.Owner, info.Repo, info.PRNumber)
+	}
+
 	publisher := comment.NewPublisher(ghClient.PullRequests)
 	if err := publisher.Publish(ctx, info.Owner, info.Repo, info.PRNumber, result); err != nil {
 		log.Printf("[%s/%s #%d] 发布评论失败: %v", info.Owner, info.Repo, info.PRNumber, err)
