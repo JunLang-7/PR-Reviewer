@@ -79,6 +79,17 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 		return
 	}
 
+	// Comment triggers don't have SHA info; fetch PR details first
+	if info.BaseSHA == "" || info.HeadSHA == "" {
+		pr, _, err := ghClient.PullRequests.Get(ctx, info.Owner, info.Repo, info.PRNumber)
+		if err != nil {
+			log.Printf("[%s/%s #%d] 获取 PR 信息失败: %v", info.Owner, info.Repo, info.PRNumber, err)
+			return
+		}
+		info.BaseSHA = pr.Base.GetSHA()
+		info.HeadSHA = pr.Head.GetSHA()
+	}
+
 	builder := prcontext.NewBuilder(ghClient.Repositories)
 	prCtx, err := builder.Build(ctx, info.Owner, info.Repo, info.BaseSHA, info.HeadSHA)
 	if err != nil {
