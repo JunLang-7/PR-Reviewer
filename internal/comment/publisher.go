@@ -90,12 +90,7 @@ func (f *Formatter) formatRisk(r analyzer.Risk) string {
 	sb.WriteString(fmt.Sprintf("- **%s** [`%s:%d`](%s)\n", r.Title, r.File, r.Line, link))
 	sb.WriteString(fmt.Sprintf("  > %s\n", r.Description))
 	if r.FixSuggestion != "" {
-		// If FixSuggestion contains a code block, render it outside the quote
-		if strings.Contains(r.FixSuggestion, "```") {
-			sb.WriteString(fmt.Sprintf("  >\n  > **建议修复**:\n\n%s\n", r.FixSuggestion))
-		} else {
-			sb.WriteString(fmt.Sprintf("  >\n  > **建议修复**: %s\n", r.FixSuggestion))
-		}
+		sb.WriteString(fmt.Sprintf("  >\n%s\n", r.FixSuggestion))
 	}
 	sb.WriteString(fmt.Sprintf("  > 置信度: %s | 严重度: %s\n\n", r.Confidence, r.Severity))
 	return sb.String()
