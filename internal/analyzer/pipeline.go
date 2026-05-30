@@ -75,7 +75,16 @@ func (p *Pipeline) runSuggestions(ctx context.Context, input PipelineInput, risk
 	if err != nil {
 		return nil, fmt.Errorf("stage 3 suggestions: %w", err)
 	}
-	return parseSuggestionResponse(resp), nil
+	suggestions := parseSuggestionResponse(resp)
+	if len(suggestions) == 0 && resp != "" && strings.TrimSpace(resp) != "无" {
+		truncated := resp
+		if len(truncated) > 300 {
+			truncated = truncated[:300] + "..."
+		}
+		fmt.Printf("[stage3] LLM raw response (no suggestions parsed): %s",
+			strings.ReplaceAll(truncated, "\n", "\\n"))
+	}
+	return suggestions, nil
 }
 
 func codeBlock(lang, content string) string {

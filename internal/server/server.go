@@ -116,9 +116,16 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 	}
 
 	if result.Suggestions != nil {
-		log.Printf("[%s/%s #%d] Stage 3: %d 条建议", info.Owner, info.Repo, info.PRNumber, len(result.Suggestions.Suggestions))
+		n := len(result.Suggestions.Suggestions)
+		if n > 0 {
+			log.Printf("[%s/%s #%d] Stage 3: %d 条建议", info.Owner, info.Repo, info.PRNumber, n)
+		} else if result.Suggestions.Error != nil {
+			log.Printf("[%s/%s #%d] Stage 3: 异常 — %v", info.Owner, info.Repo, info.PRNumber, result.Suggestions.Error)
+		} else {
+			log.Printf("[%s/%s #%d] Stage 3: LLM 未提供建议", info.Owner, info.Repo, info.PRNumber)
+		}
 	} else {
-		log.Printf("[%s/%s #%d] Stage 3: 无建议（跳过）", info.Owner, info.Repo, info.PRNumber)
+		log.Printf("[%s/%s #%d] Stage 3: 未触发", info.Owner, info.Repo, info.PRNumber)
 	}
 
 	publisher := comment.NewPublisher(ghClient.PullRequests)
