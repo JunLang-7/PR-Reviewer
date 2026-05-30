@@ -23,7 +23,7 @@ func TestPipeline_Run_AllStages(t *testing.T) {
 	mock := &mockLLM{
 		responses: map[string]string{
 			"summary": "这是一个用户注册模块的重构",
-			"risk":    "In `main.go`:\n\n>  func main() {}\n缺少错误处理\n严重程度: critical\n----",
+			"risk":    "[main.go:1](ref):\n**问题**：缺少错误处理\n严重程度: critical",
 		},
 	}
 
@@ -99,55 +99,39 @@ func TestPipelineInput_BuildRiskPrompt_ContainsCode(t *testing.T) {
 	}
 }
 
-func TestParseRiskResponse_Flat(t *testing.T) {
-	resp := "In `server/tag.go`:\n\n" +
-		">  func NewTagServer() *TagServer {\n" +
-		"     return &TagServer{}\n" +
-		"   }\n" +
-		"NewTagServer returns nil auth, dereferences and panics.\n" +
+func TestParseRiskResponse_Standard(t *testing.T) {
+	resp := "[server/tag.go:23](ref):\n" +
+		"**问题**：NewTagServer returns nil auth\n" +
+		"**后果**：GetTagList dereferences and panics\n" +
+		"**建议**：检查 auth 是否为 nil\n" +
 		"严重程度: critical\n" +
-		"----\n\n" +
-		"In `pkg/bapi/api.go`:\n\n" +
-		"> - app_key = value[0]\n" +
-		">+ if value, ok := md[\"app_key\"]; ok {\n" +
-		">+     appKey = value[0]\n" +
-		">+ }\n" +
-		"Reading metadata without checking slice length.\n" +
-		"严重程度: critical\n" +
-		"----\n\n" +
-		"In `cmd/api/main.go`:\n\n" +
-		">  p := strings.TrimPrefix(r.URL.Path, \"/swagger/\")\n" +
-		"User input not sanitized, path traversal risk.\n" +
-		"严重程度: warning\n" +
-		"----"
+		"\n" +
+		"[cmd/api/main.go:56](ref):\n" +
+		"**问题**：User input not sanitized\n" +
+		"**后果**：path traversal risk\n" +
+		"**建议**：使用 http.Dir 限制目录访问\n" +
+		"严重程度: warning\n"
 
 	risks := parseRiskResponse(resp)
-	if len(risks) != 3 {
-		t.Fatalf("expected 3 risks, got %d", len(risks))
+	if len(risks) != 2 {
+		t.Fatalf("expected 2 risks, got %d", len(risks))
 	}
 
-	if risks[0].Severity != "critical" {
-		t.Errorf("expected critical, got %s", risks[0].Severity)
-	}
 	if risks[0].File != "server/tag.go" {
 		t.Errorf("expected server/tag.go, got %s", risks[0].File)
+	}
+	if risks[0].Severity != "critical" {
+		t.Errorf("expected critical, got %s", risks[0].Severity)
 	}
 	if !strings.Contains(risks[0].Description, "auth") {
 		t.Errorf("expected description about auth, got %s", risks[0].Description)
 	}
 
-	if risks[1].File != "pkg/bapi/api.go" {
-		t.Errorf("expected pkg/bapi/api.go, got %s", risks[1].File)
+	if risks[1].File != "cmd/api/main.go" {
+		t.Errorf("expected cmd/api/main.go, got %s", risks[1].File)
 	}
-	if !strings.Contains(risks[1].FixSuggestion, "app_key") {
-		t.Errorf("expected code block with app_key, got %s", risks[1].FixSuggestion)
-	}
-
-	if risks[2].Severity != "warning" {
-		t.Errorf("expected warning, got %s", risks[2].Severity)
-	}
-	if risks[2].File != "cmd/api/main.go" {
-		t.Errorf("expected cmd/api/main.go, got %s", risks[2].File)
+	if risks[1].Severity != "warning" {
+		t.Errorf("expected warning, got %s", risks[1].Severity)
 	}
 }
 
@@ -157,19 +141,87 @@ func TestParseRiskResponse_Empty(t *testing.T) {
 	}
 }
 
-func TestExtractInFile(t *testing.T) {
-	tests := []struct {
-		line string
-		want string
-	}{
-		{"In `server/tag.go`:", "server/tag.go"},
-		{"In `pkg/bapi/api.go`:", "pkg/bapi/api.go"},
-		{"no backticks", ""},
+func TestParseRiskResponse_WithChineseColon(t *testing.T) {
+	resp := "[pkg/bapi/api.go:16](ref)：\n" +
+		"**问题**：硬编码密钥\n" +
+		"**后果**：凭证泄露\n" +
+		"**建议**：通过环境变量注入\n" +
+		"严重程度：critical\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 1 {
+		t.Fatalf("expected 1 risk, got %d", len(risks))
 	}
-	for _, tt := range tests {
-		got := extractInFile(tt.line)
-		if got != tt.want {
-			t.Errorf("extractInFile(%q) = %q, want %q", tt.line, got, tt.want)
-		}
+	if risks[0].Severity != "critical" {
+		t.Errorf("expected critical, got %s", risks[0].Severity)
+	}
+	if risks[0].File != "pkg/bapi/api.go" {
+		t.Errorf("expected pkg/bapi/api.go, got %s", risks[0].File)
+	}
+}
+
+func TestParseRiskResponse_WithNoiseHeaders(t *testing.T) {
+	resp := "### 🔴 严重逻辑缺陷\n\n" +
+		"[cmd/api/main.go:132](ref):\n" +
+		"**问题**：gatewayMux is nil\n" +
+		"**后果**：httpMux.Handle panics\n" +
+		"**建议**：返回 error 由上层处理\n" +
+		"严重程度: critical\n" +
+		"\n" +
+		"### ✅ 总结\n" +
+		"建议在合并前修复所有 critical 问题\n" +
+		"[go.mod:3](ref):\n" +
+		"**问题**：Go 版本号无效\n" +
+		"**后果**：编译失败\n" +
+		"**建议**：修正为实际版本\n" +
+		"严重程度: warning\n" +
+		"\n" +
+		"以上是本次评审的全部内容\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 2 {
+		t.Fatalf("expected 2 risks, got %d", len(risks))
+	}
+	if risks[0].File != "cmd/api/main.go" {
+		t.Errorf("expected cmd/api/main.go, got %s", risks[0].File)
+	}
+	if risks[1].File != "go.mod" {
+		t.Errorf("expected go.mod, got %s", risks[1].File)
+	}
+}
+
+func TestParseRiskResponse_MissingField(t *testing.T) {
+	resp := "[client/client.go:23](ref):\n" +
+		"**问题**：Auth.RequireTransportSecurity 返回 false\n" +
+		"**建议**：改用 TLS 传输\n" +
+		"严重程度: warning\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 1 {
+		t.Fatalf("expected 1 risk, got %d", len(risks))
+	}
+	if risks[0].Severity != "warning" {
+		t.Errorf("expected warning, got %s", risks[0].Severity)
+	}
+	if !strings.Contains(risks[0].Description, "RequireTransportSecurity") {
+		t.Errorf("expected description about auth, got %s", risks[0].Description)
+	}
+}
+
+func TestParseRiskResponse_EmptyBody(t *testing.T) {
+	resp := "[empty.go:1](ref):\n" +
+		"严重程度: suggestion\n" +
+		"\n" +
+		"[valid.go:2](ref):\n" +
+		"**问题**：有实际内容\n" +
+		"**建议**：修复它\n" +
+		"严重程度: warning\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 1 {
+		t.Fatalf("expected 1 risk, got %d", len(risks))
+	}
+	if risks[0].File != "valid.go" {
+		t.Errorf("expected valid.go, got %s", risks[0].File)
 	}
 }
