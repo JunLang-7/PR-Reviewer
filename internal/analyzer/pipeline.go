@@ -3,7 +3,6 @@ package analyzer
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -101,215 +100,121 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "\n... (truncated)"
 }
 
+// parseRiskResponse parses flat Copilot-style comments separated by ----
+// Each block: In `file`:\n\n> code\ncomment...\n严重程度: xxx
 func parseRiskResponse(resp string) []Risk {
 	if resp == "" {
 		return nil
 	}
 
 	var risks []Risk
-	sections := []struct {
-		marker   string
-		severity string
-	}{
-		{"### Critical", "critical"},
-		{"### Warning", "warning"},
-		{"### Suggestion", "suggestion"},
-	}
-
-	for _, sec := range sections {
-		content := extractSection(resp, sec.marker)
-		if isEmpty(content) {
+	for _, block := range strings.Split(resp, "\n----") {
+		block = strings.TrimSpace(block)
+		if block == "" || block == "（无）" || block == "(无)" {
 			continue
 		}
-		risks = append(risks, parseRiskItems(content, sec.severity)...)
+		r := parseRiskBlock(block)
+		if r != nil {
+			risks = append(risks, *r)
+		}
 	}
-
 	return risks
 }
 
-func extractSection(resp, marker string) string {
-	idx := strings.Index(resp, marker)
-	if idx < 0 {
-		return ""
-	}
-	content := resp[idx+len(marker):]
+// parseRiskBlock parses a single comment block:
+// In `file.go`:
+//
+// > code line (only first line has > for reference)
+//
+// comment text...
+// 严重程度: xxx
+func parseRiskBlock(block string) *Risk {
+	var codeLines []string
+	var commentLines []string
+	inCode := false
 
-	for _, m := range []string{"\n### Critical", "\n### Warning", "\n### Suggestion", "\n---"} {
-		if i := strings.Index(content, m); i >= 0 {
-			content = content[:i]
+	for _, line := range strings.Split(block, "\n") {
+		trimmed := strings.TrimSpace(line)
+
+		// Skip "In `file`:" header
+		if strings.HasPrefix(trimmed, "In `") && strings.Contains(trimmed, "`:") {
+			continue
+		}
+
+		// Code lines: start with >, >-, >+
+		if strings.HasPrefix(trimmed, ">") {
+			inCode = true
+			codeLines = append(codeLines, trimmed)
+			continue
+		}
+		// Blank line: transition from code to comment
+		if inCode && trimmed == "" {
+			inCode = false
+			continue
+		}
+		if trimmed != "" {
+			commentLines = append(commentLines, trimmed)
+		}
+	}
+
+	comment := strings.TrimSpace(strings.Join(commentLines, "\n"))
+	if comment == "" {
+		return nil
+	}
+
+	// Extract file from first "In `file`:" line
+	file := ""
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "In `") {
+			file = extractInFile(strings.TrimSpace(line))
 			break
 		}
 	}
-	return strings.TrimSpace(content)
-}
 
-func isEmpty(content string) bool {
-	c := strings.TrimSpace(content)
-	return c == "" || c == "（无）" || c == "(无)" || c == "无"
-}
-
-func parseRiskItems(content, severity string) []Risk {
-	var risks []Risk
-
-	if strings.HasPrefix(content, "- ") || strings.HasPrefix(content, "* ") {
-		content = "\n" + content
-	}
-	bullets := strings.Split(content, "\n- ")
-	if len(bullets) > 1 {
-		for _, bullet := range bullets {
-			bullet = strings.TrimSpace(bullet)
-			if bullet == "" || bullet == "（无）" || bullet == "(无)" {
-				continue
-			}
-			r := parseBulletRisk(bullet, severity)
-			if r != nil {
-				risks = append(risks, *r)
+	// Extract severity from "严重程度: xxx" at end of comment
+	severity := "warning"
+	lines := commentLines
+	if len(lines) > 0 {
+		last := lines[len(lines)-1]
+		for _, s := range []string{"critical", "warning", "suggestion"} {
+			if strings.Contains(last, "严重程度: "+s) || strings.Contains(last, "严重程度："+s) {
+				severity = s
+				comment = strings.TrimSpace(strings.Join(lines[:len(lines)-1], "\n"))
+				break
 			}
 		}
-		return risks
 	}
 
-	risks = append(risks, Risk{
-		Title:       extractTitle(content),
-		Severity:    severity,
-		Confidence:  extractConfidence(content),
-		Description: content,
-		File:        extractFile(content),
-		Line:        extractLine(content),
-	})
-	return risks
-}
-
-func parseBulletRisk(bullet, severity string) *Risk {
-	headline := bullet
-	description := ""
-	idx := strings.Index(bullet, "\n")
-	if idx >= 0 {
-		headline = bullet[:idx]
-		description = strings.TrimSpace(bullet[idx+1:])
-	}
-	headline = strings.TrimSpace(headline)
-	headline = strings.TrimPrefix(headline, "- ")
-	headline = strings.TrimPrefix(headline, "* ")
-	if strings.HasPrefix(headline, "\n") {
-		headline = headline[1:]
-	}
-
-	fixSuggestion := ""
-	if description != "" {
-		if i := strings.Index(description, "建议修复"); i >= 0 {
-			fixSuggestion = strings.TrimSpace(description[i:])
-			fixSuggestion = strings.TrimPrefix(fixSuggestion, "建议修复")
-			fixSuggestion = strings.TrimPrefix(fixSuggestion, "：")
-			fixSuggestion = strings.TrimPrefix(fixSuggestion, ":")
-			fixSuggestion = strings.TrimSpace(fixSuggestion)
-			description = strings.TrimSpace(description[:i])
+	// Title: first line of comment, truncated
+	title := file
+	if comment != "" {
+		firstLine := strings.SplitN(comment, "\n", 2)[0]
+		if len(firstLine) > 80 {
+			firstLine = firstLine[:80] + "..."
 		}
+		title = firstLine
 	}
-
-	title := extractTitle(headline)
-	file := extractFile(headline)
-	line := extractLine(headline)
-	confidence := extractConfidence(headline)
 
 	return &Risk{
 		Title:         title,
 		File:          file,
-		Line:          line,
+		Line:          0,
 		Severity:      severity,
-		Confidence:    confidence,
-		Description:   description,
-		FixSuggestion: fixSuggestion,
+		Confidence:    "medium",
+		Description:   comment,
+		FixSuggestion: strings.TrimSpace(strings.Join(codeLines, "\n")),
 	}
 }
 
-func extractTitle(text string) string {
-	start := strings.Index(text, "**")
-	if start < 0 {
-		if len(text) > 60 {
-			return text[:60] + "..."
-		}
-		return text
-	}
-	end := strings.Index(text[start+2:], "**")
-	if end < 0 {
-		return text[start+2:]
-	}
-	return text[start+2 : start+2+end]
-}
-
-func extractConfidence(text string) string {
-	for _, level := range []string{"high", "medium", "low"} {
-		if strings.Contains(strings.ToLower(text), "置信度: "+level) ||
-			strings.Contains(strings.ToLower(text), "置信度:"+level) ||
-			strings.Contains(strings.ToLower(text), "置信度："+level) {
-			return level
-		}
-	}
-	return "medium"
-}
-
-func extractFile(text string) string {
-	start := strings.Index(text, "`")
+// extractInFile parses "In `file.go`:" -> "file.go"
+func extractInFile(line string) string {
+	start := strings.Index(line, "`")
 	if start < 0 {
 		return ""
 	}
-	end := strings.Index(text[start+1:], "`")
+	end := strings.Index(line[start+1:], "`")
 	if end < 0 {
 		return ""
 	}
-	inner := text[start+1 : start+1+end]
-	if colon := strings.LastIndex(inner, ":"); colon >= 0 {
-		return inner[:colon]
-	}
-	return inner
+	return line[start+1 : start+1+end]
 }
-
-func extractLine(text string) int {
-	start := strings.Index(text, "`")
-	if start < 0 {
-		return 0
-	}
-	end := strings.Index(text[start+1:], "`")
-	if end < 0 {
-		return 0
-	}
-	inner := text[start+1 : start+1+end]
-	if colon := strings.LastIndex(inner, ":"); colon >= 0 {
-		lineStr := inner[colon+1:]
-		if n, err := strconv.Atoi(lineStr); err == nil {
-			return n
-		}
-	}
-	return 0
-}
-
-const systemPromptSummary = "你是一个代码评审助手。你的任务是用中文简洁地总结 PR 变更内容。\n" +
-	"要求：\n" +
-	"1. 2-4 句话概括变更的核心目的\n" +
-	"2. 列出受影响的关键模块或文件\n" +
-	"3. 用中文回复"
-
-const systemPromptRisk = "你是一个代码安全与质量评审专家。请识别以下 PR 中的潜在风险。\n" +
-	"重点关注：\n" +
-	"- 安全漏洞（SQL 注入、XSS、密钥泄漏、权限绕过、路径遍历）\n" +
-	"- 逻辑错误（空指针、边界条件、错误处理缺失）\n" +
-	"- 并发问题（竞态条件、死锁、资源泄漏）\n" +
-	"- 破坏性变更（接口不兼容、API 签名变更）\n" +
-	"\n" +
-	"请按以下格式回复：\n" +
-	"### Critical\n" +
-	"- **标题** `文件:行号` 置信度: high/medium/low\n" +
-	"\n" +
-	"  In `文件路径`:\n" +
-	"  > 原始代码\n" +
-	"\n" +
-	"  描述与修复说明。涉及代码变更时，使用 >- 标记删除的行，>+ 标记新增的行：\n" +
-	"  >- 要删除的代码\n" +
-	"  >+ 替换为的代码\n" +
-	"\n" +
-	"### Warning\n" +
-	"...\n" +
-	"\n" +
-	"### Suggestion\n" +
-	"..."
