@@ -6,8 +6,12 @@ import (
 )
 
 // FileLineToPosition converts a file line number (in the new version) to a
-// diff position within a unified diff hunk. Returns 0 if not found in this hunk.
+// diff position within a single unified diff hunk. Returns 0 if not found.
 func FileLineToPosition(hunk string, targetLine int) int {
+	if targetLine <= 0 {
+		return 0
+	}
+
 	lines := strings.Split(hunk, "\n")
 	position := 0
 	currentNewLine := 0
@@ -16,13 +20,13 @@ func FileLineToPosition(hunk string, targetLine int) int {
 		if strings.HasPrefix(line, "@@") {
 			newStart := parseHunkNewStart(line)
 			if newStart > 0 {
-				currentNewLine = newStart - 1 // will increment on first context/new line
+				currentNewLine = newStart - 1
 			}
 			continue
 		}
 
-		// Empty line or end
-		if line == "" {
+		// Skip empty lines and git metadata markers (e.g. "\ No newline at end of file")
+		if line == "" || strings.HasPrefix(line, "\\") {
 			continue
 		}
 
@@ -35,7 +39,6 @@ func FileLineToPosition(hunk string, targetLine int) int {
 				return position
 			}
 		}
-		// Deleted lines (-) don't increment currentNewLine
 	}
 
 	return 0
@@ -44,14 +47,12 @@ func FileLineToPosition(hunk string, targetLine int) int {
 // parseHunkNewStart extracts the new file start line from a hunk header.
 // Format: @@ -old_start,old_count +new_start,new_count @@
 func parseHunkNewStart(header string) int {
-	// Find "+" after the first "@@"
 	plusIdx := strings.Index(header, "+")
 	if plusIdx < 0 {
 		return 0
 	}
 
 	rest := header[plusIdx+1:]
-	// Extract number before comma or space
 	commaIdx := strings.Index(rest, ",")
 	endIdx := strings.Index(rest, " ")
 	if commaIdx >= 0 {
