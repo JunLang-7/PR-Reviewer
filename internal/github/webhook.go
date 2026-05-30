@@ -13,15 +13,16 @@ import (
 )
 
 type PRInfo struct {
-	Owner          string
-	Repo           string
-	PRNumber       int
-	BaseRef        string
-	HeadRef        string
-	BaseSHA        string
-	HeadSHA        string
-	InstallationID int64
-	Action         string // "opened", "synchronize", etc.
+	Owner                  string
+	Repo                   string
+	PRNumber               int
+	BaseRef                string
+	HeadRef                string
+	BaseSHA                string
+	HeadSHA                string
+	InstallationID         int64
+	Action                 string // "opened", "synchronize", "review_requested"
+	RequestedReviewerLogin string // set only for review_requested action
 }
 
 type WebhookHandler struct {
@@ -67,7 +68,25 @@ func (h *WebhookHandler) ParsePREvent(body []byte) (*PRInfo, error) {
 		InstallationID: event.GetInstallation().GetID(),
 		Action:         event.GetAction(),
 	}
+
+	// Extract requested_reviewer for review_requested events
+	if info.Action == "review_requested" {
+		info.RequestedReviewerLogin = extractRequestedReviewer(body)
+	}
+
 	return info, nil
+}
+
+func extractRequestedReviewer(body []byte) string {
+	var payload struct {
+		RequestedReviewer struct {
+			Login string `json:"login"`
+		} `json:"requested_reviewer"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	return payload.RequestedReviewer.Login
 }
 
 func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) ([]byte, *PRInfo, error) {
@@ -92,10 +111,11 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) ([]byte,
 		return nil, nil, err
 	}
 
-	// Only handle opened and synchronize for v1
-	if info.Action != "opened" && info.Action != "synchronize" {
+	// Handle opened, synchronize, and review_requested
+	switch info.Action {
+	case "opened", "synchronize", "review_requested":
+		return body, info, nil
+	default:
 		return body, info, nil // skip, no error
 	}
-
-	return body, info, nil
 }
