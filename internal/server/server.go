@@ -16,13 +16,15 @@ type Server struct {
 	appClient      *ghclient.Client
 	pipeline       *analyzer.Pipeline
 	webhookHandler *ghclient.WebhookHandler
+	appSlug        string
 }
 
-func New(appClient *ghclient.Client, pipeline *analyzer.Pipeline, webhookHandler *ghclient.WebhookHandler) *Server {
+func New(appClient *ghclient.Client, pipeline *analyzer.Pipeline, webhookHandler *ghclient.WebhookHandler, appSlug string) *Server {
 	return &Server{
 		appClient:      appClient,
 		pipeline:       pipeline,
 		webhookHandler: webhookHandler,
+		appSlug:        appSlug,
 	}
 }
 
@@ -50,7 +52,16 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if info.Action != "opened" && info.Action != "synchronize" {
+	if info.Action == "review_requested" {
+		botName := s.appSlug + "[bot]"
+		if info.RequestedReviewerLogin != botName {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		log.Printf("[%s/%s #%d] 收到手动 Review Request", info.Owner, info.Repo, info.PRNumber)
+	}
+
+	if info.Action != "opened" && info.Action != "synchronize" && info.Action != "review_requested" {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -86,13 +97,21 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 		return
 	}
 
-	log.Printf("[%s/%s #%d] 已获取 %d 个文件 (%d 行 diff), 开始 AI 分析...",
-		info.Owner, info.Repo, info.PRNumber, prCtx.TotalFiles, prCtx.TotalDiffLines)
+	// Manual review request forces Stage 3 depth
+	mode := "auto"
+	stage3 := prCtx.Stage3Eligible
+	if info.Action == "review_requested" {
+		stage3 = true
+		mode = "manual"
+	}
+
+	log.Printf("[%s/%s #%d] 已获取 %d 个文件 (%d 行 diff), 开始 AI 分析 (%s)...",
+		info.Owner, info.Repo, info.PRNumber, prCtx.TotalFiles, prCtx.TotalDiffLines, mode)
 
 	result, err := s.pipeline.Run(ctx, analyzer.PipelineInput{
 		Diff:           buildDiffString(prCtx),
 		FileContents:   prCtx.FileContents,
-		Stage3Eligible: prCtx.Stage3Eligible,
+		Stage3Eligible: stage3,
 	})
 	if err != nil {
 		log.Printf("[%s/%s #%d] AI 分析异常: %v", info.Owner, info.Repo, info.PRNumber, err)
