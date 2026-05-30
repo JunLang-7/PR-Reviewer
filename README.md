@@ -9,8 +9,7 @@ PR 提交 → Webhook → 获取变更上下文 → AI 分析 → 发布 Review 
 ```
 
 - **Stage 1**: 变更总结（轻量模型，快速概览 PR 目的和影响范围）
-- **Stage 2**: 风险识别（主力模型，扫描安全漏洞、逻辑错误、并发问题、破坏性变更）
-- **Stage 3**: 优化建议（小 PR 自动触发，提供行级改进建议）
+- **Stage 2**: 风险识别（主力模型，扫描安全漏洞、逻辑错误、并发问题、破坏性变更，含 Copilot 风格 diff 修复建议）
 
 ## 快速开始
 
@@ -55,7 +54,7 @@ GITHUB_WEBHOOK_SECRET=Webhook Secret 推荐使用 openssl rand -hex 32 生成的
 LLM_API_KEY=你的 API Key
 LLM_BASE_URL=https://api.deepseek.com/anthropic   # DeepSeek 官方 Anthropic 兼容端点
 LLM_MODEL_FAST=deepseek-v4-flash                  # Stage 1 模型
-LLM_MODEL_POWERFUL=deepseek-v4-pro                 # Stage 2+3 模型
+LLM_MODEL_POWERFUL=deepseek-v4-pro                 # Stage 2 模型
 ```
 
 ### 4. 启动
@@ -90,7 +89,7 @@ https://xxxx.ngrok-free.app/webhook
 @prreviewer-app review
 ```
 
-手动触发会强制开启 Stage 3 深度分析。
+手动触发适用于想对特定 PR 请求 AI Review 的场景。
 
 ## 配置说明
 
@@ -102,7 +101,7 @@ https://xxxx.ngrok-free.app/webhook
 | `LLM_API_KEY` | ✓ | - | LLM API Key |
 | `LLM_BASE_URL` | - | `https://api.anthropic.com` | LLM 接口地址，支持任意兼容 Anthropic API 的服务 |
 | `LLM_MODEL_FAST` | - | `claude-haiku-4-5` | Stage 1 模型名称 |
-| `LLM_MODEL_POWERFUL` | - | `claude-sonnet-4-6` | Stage 2+3 模型名称 |
+| `LLM_MODEL_POWERFUL` | - | `claude-sonnet-4-6` | Stage 2 模型名称 |
 | `PORT` | - | `8080` | 监听端口 |
 
 模型名称需与所选 LLM 服务支持的模型对应：
