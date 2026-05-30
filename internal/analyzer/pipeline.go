@@ -192,10 +192,12 @@ func parseRiskBlock(block string) *Risk {
 
 	title := file
 	firstBodyLine := strings.SplitN(description, "\n", 2)[0]
-	if len(firstBodyLine) > 80 {
-		firstBodyLine = firstBodyLine[:80]
+	if stripped, ok := strings.CutPrefix(firstBodyLine, "**问题**："); ok {
+		firstBodyLine = strings.TrimSpace(stripped)
+	} else if stripped, ok := strings.CutPrefix(firstBodyLine, "**问题**:"); ok {
+		firstBodyLine = strings.TrimSpace(stripped)
 	}
-	if !strings.Contains(firstBodyLine, "`") && !strings.Contains(firstBodyLine, "```") {
+	if firstBodyLine != "" && !strings.HasPrefix(firstBodyLine, "**") {
 		title = firstBodyLine
 	}
 
