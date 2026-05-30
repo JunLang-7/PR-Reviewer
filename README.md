@@ -121,6 +121,10 @@ https://xxxx.ngrok-free.app/webhook
 | Anthropic Claude | `claude-haiku-4-5`、`claude-sonnet-4-6` |
 | DeepSeek | `deepseek-v4-flash`、`deepseek-v4-pro` |
 
+## 设计思路
+
+架构设计、模型选择、扩展性等设计思路详见 [docs/design.md](docs/design.md)。
+
 ## 项目结构
 
 ```
@@ -134,8 +138,9 @@ PRReviewer/
 │   ├── comment/                # Review 评论格式化与发布
 │   ├── server/                 # HTTP 路由与流程编排
 │   └── logger/                 # 请求日志中间件
+├── docs/design.md              # 架构设计思路
 ├── .env.example
-└── openspec/                   # 设计文档
+└── openspec/                   # 变更规约与归档
 ```
 
 ## 许可证
