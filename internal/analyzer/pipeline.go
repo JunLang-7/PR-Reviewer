@@ -85,7 +85,8 @@ func (input PipelineInput) buildRiskPrompt(summary string) string {
 
 	if summary != "" {
 		sb.WriteString("## PR 变更摘要（仅供参考，不得基于此缩小审查范围）\n")
-		sb.WriteString(summary)
+		sb.WriteString("> ")
+		sb.WriteString(strings.ReplaceAll(summary, "\n", "\n> "))
 		sb.WriteString("\n\n")
 	}
 
