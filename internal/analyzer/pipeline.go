@@ -3,6 +3,8 @@ package analyzer
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -100,19 +102,16 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen] + "\n... (truncated)"
 }
 
-// parseRiskResponse parses flat Copilot-style comments separated by ----
-// Each block: In `file`:\n\n> code\ncomment...\n严重程度: xxx
+var fileHeaderRe = regexp.MustCompile(`^\[[^\]]+\]\(ref\)[:：]`)
+
 func parseRiskResponse(resp string) []Risk {
 	if resp == "" {
 		return nil
 	}
 
 	var risks []Risk
-	for _, block := range strings.Split(resp, "\n----") {
-		block = strings.TrimSpace(block)
-		if block == "" || block == "（无）" || block == "(无)" {
-			continue
-		}
+	blocks := splitByFileHeader(resp)
+	for _, block := range blocks {
 		r := parseRiskBlock(block)
 		if r != nil {
 			risks = append(risks, *r)
@@ -121,78 +120,83 @@ func parseRiskResponse(resp string) []Risk {
 	return risks
 }
 
-// parseRiskBlock parses a single comment block:
-// In `file.go`:
-//
-// > code line (only first line has > for reference)
-//
-// comment text...
-// 严重程度: xxx
-func parseRiskBlock(block string) *Risk {
-	var codeLines []string
-	var commentLines []string
-	inCode := false
+func splitByFileHeader(resp string) []string {
+	var blocks []string
+	lines := strings.Split(resp, "\n")
+	currentStart := 0
 
-	for _, line := range strings.Split(block, "\n") {
+	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-
-		// Skip "In `file`:" header
-		if strings.HasPrefix(trimmed, "In `") && strings.Contains(trimmed, "`:") {
-			continue
-		}
-
-		// Code lines: start with >, >-, >+
-		if strings.HasPrefix(trimmed, ">") {
-			inCode = true
-			codeLines = append(codeLines, trimmed)
-			continue
-		}
-		// Blank line: transition from code to comment
-		if inCode && trimmed == "" {
-			inCode = false
-			continue
-		}
-		if trimmed != "" {
-			commentLines = append(commentLines, trimmed)
+		if fileHeaderRe.MatchString(trimmed) {
+			if i > 0 && currentStart < i {
+				blocks = append(blocks, strings.Join(lines[currentStart:i], "\n"))
+			}
+			currentStart = i
 		}
 	}
+	if currentStart < len(lines) {
+		blocks = append(blocks, strings.Join(lines[currentStart:], "\n"))
+	}
+	return blocks
+}
 
-	comment := strings.TrimSpace(strings.Join(commentLines, "\n"))
-	if comment == "" {
+func parseRiskBlock(block string) *Risk {
+	block = strings.TrimSpace(block)
+	if block == "" {
 		return nil
 	}
 
-	// Extract file from first "In `file`:" line
-	file := ""
-	for _, line := range strings.Split(block, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "In `") {
-			file = extractInFile(strings.TrimSpace(line))
+	lines := strings.Split(block, "\n")
+
+	headerIdx := -1
+	for i, line := range lines {
+		if fileHeaderRe.MatchString(strings.TrimSpace(line)) {
+			headerIdx = i
 			break
 		}
 	}
+	if headerIdx == -1 {
+		return nil
+	}
 
-	// Extract severity from "严重程度: xxx" at end of comment
+	file, _ := parseFileHeader(strings.TrimSpace(lines[headerIdx]))
+
+	bodyLines := lines[headerIdx+1:]
+
+	for len(bodyLines) > 0 && strings.TrimSpace(bodyLines[len(bodyLines)-1]) == "" {
+		bodyLines = bodyLines[:len(bodyLines)-1]
+	}
+
 	severity := "warning"
-	lines := commentLines
-	if len(lines) > 0 {
-		last := lines[len(lines)-1]
+	severityLineIdx := -1
+	for i, line := range bodyLines {
+		trimmed := strings.TrimSpace(line)
 		for _, s := range []string{"critical", "warning", "suggestion"} {
-			if strings.Contains(last, "严重程度: "+s) || strings.Contains(last, "严重程度："+s) {
+			if strings.Contains(trimmed, "严重程度: "+s) || strings.Contains(trimmed, "严重程度："+s) {
 				severity = s
-				comment = strings.TrimSpace(strings.Join(lines[:len(lines)-1], "\n"))
-				break
+				severityLineIdx = i
 			}
 		}
 	}
 
-	// Title: first line of comment, truncated
+	bodyEnd := len(bodyLines)
+	if severityLineIdx >= 0 {
+		bodyEnd = severityLineIdx
+	}
+
+	description := strings.Join(bodyLines[:bodyEnd], "\n")
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return nil
+	}
+
 	title := file
-	if comment != "" {
-		firstLine := strings.SplitN(comment, "\n", 2)[0]
-		if len(firstLine) > 80 {
-			firstLine = firstLine[:80] + "..."
-		}
-		title = firstLine
+	firstBodyLine := strings.SplitN(description, "\n", 2)[0]
+	if len(firstBodyLine) > 80 {
+		firstBodyLine = firstBodyLine[:80]
+	}
+	if !strings.Contains(firstBodyLine, "`") && !strings.Contains(firstBodyLine, "```") {
+		title = firstBodyLine
 	}
 
 	return &Risk{
@@ -201,20 +205,27 @@ func parseRiskBlock(block string) *Risk {
 		Line:          0,
 		Severity:      severity,
 		Confidence:    "medium",
-		Description:   comment,
-		FixSuggestion: strings.TrimSpace(strings.Join(codeLines, "\n")),
+		Description:   description,
+		FixSuggestion: "",
 	}
 }
 
-// extractInFile parses "In `file.go`:" -> "file.go"
-func extractInFile(line string) string {
-	start := strings.Index(line, "`")
-	if start < 0 {
-		return ""
+func parseFileHeader(line string) (string, int) {
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "[")
+	if idx := strings.Index(line, "](ref)"); idx != -1 {
+		line = line[:idx]
 	}
-	end := strings.Index(line[start+1:], "`")
-	if end < 0 {
-		return ""
+	line = strings.TrimSuffix(line, ":")
+	line = strings.TrimSuffix(line, "：")
+	if idx := strings.LastIndex(line, ":"); idx != -1 {
+		path := line[:idx]
+		numStr := line[idx+1:]
+		if dashIdx := strings.Index(numStr, "-"); dashIdx != -1 {
+			numStr = numStr[:dashIdx]
+		}
+		lineNum, _ := strconv.Atoi(numStr)
+		return path, lineNum
 	}
-	return line[start+1 : start+1+end]
+	return line, 0
 }
