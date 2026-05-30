@@ -56,7 +56,15 @@ func (p *Pipeline) runRiskScan(ctx context.Context, input PipelineInput) ([]Risk
 	if err != nil {
 		return nil, fmt.Errorf("stage 2 risk scan: %w", err)
 	}
-	return parseRiskResponse(resp), nil
+	risks := parseRiskResponse(resp)
+	if len(risks) == 0 && resp != "" && !strings.Contains(resp, "未发现") {
+		truncated := resp
+		if len(truncated) > 500 {
+			truncated = truncated[:500] + "..."
+		}
+		fmt.Printf("[stage2] raw response (no risks parsed): %s\n", strings.ReplaceAll(truncated, "\n", "\\n"))
+	}
+	return risks, nil
 }
 
 func codeBlock(lang, content string) string {
