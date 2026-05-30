@@ -32,7 +32,7 @@ func (p *Pipeline) Run(ctx context.Context, input PipelineInput) (*AnalysisResul
 		result.Summary.Error = err
 	}
 
-	risks, err := p.runRiskScan(ctx, input)
+	risks, err := p.runRiskScan(ctx, input, summary)
 	if err != nil {
 		result.Risks = &RiskResult{Error: err}
 	} else {
@@ -51,8 +51,8 @@ func (p *Pipeline) runSummary(ctx context.Context, input PipelineInput) (string,
 	return resp, nil
 }
 
-func (p *Pipeline) runRiskScan(ctx context.Context, input PipelineInput) ([]Risk, error) {
-	prompt := input.buildRiskPrompt()
+func (p *Pipeline) runRiskScan(ctx context.Context, input PipelineInput, summary string) ([]Risk, error) {
+	prompt := input.buildRiskPrompt(summary)
 	resp, err := p.llm.Chat(ctx, p.modelPower, systemPromptRisk, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("stage 2 risk scan: %w", err)
@@ -79,9 +79,15 @@ func (input PipelineInput) buildSummaryPrompt() string {
 	return sb.String()
 }
 
-func (input PipelineInput) buildRiskPrompt() string {
+func (input PipelineInput) buildRiskPrompt(summary string) string {
 	var sb strings.Builder
 	sb.WriteString("请分析以下 PR 变更中的潜在风险：\n\n")
+
+	if summary != "" {
+		sb.WriteString("## PR 变更摘要（仅供参考，不得基于此缩小审查范围）\n")
+		sb.WriteString(summary)
+		sb.WriteString("\n\n")
+	}
 
 	sb.WriteString("## 变更文件 Diff\n")
 	sb.WriteString(codeBlock("diff", truncate(input.Diff, 5000)))
