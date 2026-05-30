@@ -10,7 +10,6 @@ import (
 type Config struct {
 	GitHubAppID         int64
 	GitHubAppPrivateKey string
-	GitHubAppSlug       string
 	GitHubWebhookSecret string
 	LLMAPIKey           string
 	LLMBaseURL          string
@@ -64,7 +63,6 @@ func Load() (*Config, error) {
 	return &Config{
 		GitHubAppID:         appID,
 		GitHubAppPrivateKey: keyContent,
-		GitHubAppSlug:       envStr("GITHUB_APP_SLUG", ""),
 		GitHubWebhookSecret: webhookSecret,
 		LLMAPIKey:           apiKey,
 		LLMBaseURL:          envStr("LLM_BASE_URL", "https://api.anthropic.com"),

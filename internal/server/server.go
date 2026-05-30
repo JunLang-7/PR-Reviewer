@@ -16,15 +16,13 @@ type Server struct {
 	appClient      *ghclient.Client
 	pipeline       *analyzer.Pipeline
 	webhookHandler *ghclient.WebhookHandler
-	appSlug        string
 }
 
-func New(appClient *ghclient.Client, pipeline *analyzer.Pipeline, webhookHandler *ghclient.WebhookHandler, appSlug string) *Server {
+func New(appClient *ghclient.Client, pipeline *analyzer.Pipeline, webhookHandler *ghclient.WebhookHandler) *Server {
 	return &Server{
 		appClient:      appClient,
 		pipeline:       pipeline,
 		webhookHandler: webhookHandler,
-		appSlug:        appSlug,
 	}
 }
 
@@ -52,20 +50,6 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if info.Action == "review_requested" {
-		botName := s.appSlug + "[bot]"
-		if info.RequestedReviewerLogin != botName {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		log.Printf("[%s/%s #%d] 收到手动 Review Request", info.Owner, info.Repo, info.PRNumber)
-	}
-
-	if info.Action != "opened" && info.Action != "synchronize" && info.Action != "review_requested" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	w.WriteHeader(http.StatusAccepted)
 
 	go func() {
@@ -82,7 +66,12 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	log.Printf("[%s/%s #%d] 开始 Review (action=%s)", info.Owner, info.Repo, info.PRNumber, info.Action)
+	mode := "auto"
+	if info.Action == "comment" {
+		mode = "manual"
+	}
+
+	log.Printf("[%s/%s #%d] 开始 Review (mode=%s)", info.Owner, info.Repo, info.PRNumber, mode)
 
 	ghClient, err := s.appClient.NewInstallationClient(ctx, info.InstallationID)
 	if err != nil {
@@ -97,16 +86,14 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 		return
 	}
 
-	// Manual review request forces Stage 3 depth
-	mode := "auto"
+	// Manual trigger forces Stage 3 depth
 	stage3 := prCtx.Stage3Eligible
-	if info.Action == "review_requested" {
+	if info.Action == "comment" {
 		stage3 = true
-		mode = "manual"
 	}
 
-	log.Printf("[%s/%s #%d] 已获取 %d 个文件 (%d 行 diff), 开始 AI 分析 (%s)...",
-		info.Owner, info.Repo, info.PRNumber, prCtx.TotalFiles, prCtx.TotalDiffLines, mode)
+	log.Printf("[%s/%s #%d] 已获取 %d 个文件 (%d 行 diff), 开始 AI 分析...",
+		info.Owner, info.Repo, info.PRNumber, prCtx.TotalFiles, prCtx.TotalDiffLines)
 
 	result, err := s.pipeline.Run(ctx, analyzer.PipelineInput{
 		Diff:           buildDiffString(prCtx),

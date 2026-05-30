@@ -28,7 +28,7 @@ func main() {
 	pipeline := analyzer.NewPipeline(llmClient, cfg.LLMModelFast, cfg.LLMModelPowerful)
 	webhookHandler := github.NewWebhookHandler(cfg.GitHubWebhookSecret)
 
-	srv := server.New(appClient, pipeline, webhookHandler, cfg.GitHubAppSlug)
+	srv := server.New(appClient, pipeline, webhookHandler)
 
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	log.Printf("========================================")

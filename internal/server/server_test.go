@@ -73,7 +73,7 @@ func newTestServer(issues *mockGHIssues) (*Server, *mockGHIssues) {
 	// We need a real *ghclient.Client to create the server.
 	// For tests we create a minimal one that returns nil clients.
 	// processPR is tested via unit tests; integration is for e2e.
-	return New(nil, pipeline, webhookHandler, ""), issues
+	return New(nil, pipeline, webhookHandler), issues
 }
 
 func TestServer_Webhook_NonPREvent(t *testing.T) {

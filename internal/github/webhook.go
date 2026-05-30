@@ -13,16 +13,15 @@ import (
 )
 
 type PRInfo struct {
-	Owner                  string
-	Repo                   string
-	PRNumber               int
-	BaseRef                string
-	HeadRef                string
-	BaseSHA                string
-	HeadSHA                string
-	InstallationID         int64
-	Action                 string // "opened", "synchronize", "review_requested"
-	RequestedReviewerLogin string // set only for review_requested action
+	Owner          string
+	Repo           string
+	PRNumber       int
+	BaseRef        string
+	HeadRef        string
+	BaseSHA        string
+	HeadSHA        string
+	InstallationID int64
+	Action         string // "opened", "synchronize", "comment"
 }
 
 type WebhookHandler struct {
@@ -46,49 +45,6 @@ func (h *WebhookHandler) VerifySignature(body []byte, signatureHeader string) bo
 	return hmac.Equal([]byte(expected), []byte(signatureHeader))
 }
 
-func (h *WebhookHandler) ParsePREvent(body []byte) (*PRInfo, error) {
-	event := &gh.PullRequestEvent{}
-	if err := json.Unmarshal(body, event); err != nil {
-		return nil, fmt.Errorf("unmarshal PR event: %w", err)
-	}
-
-	pr := event.GetPullRequest()
-	if pr == nil || pr.Base == nil || pr.Head == nil {
-		return nil, fmt.Errorf("invalid PR event: missing pull request data")
-	}
-
-	info := &PRInfo{
-		Owner:          event.GetRepo().GetOwner().GetLogin(),
-		Repo:           event.GetRepo().GetName(),
-		PRNumber:       pr.GetNumber(),
-		BaseRef:        pr.Base.GetRef(),
-		HeadRef:        pr.Head.GetRef(),
-		BaseSHA:        pr.Base.GetSHA(),
-		HeadSHA:        pr.Head.GetSHA(),
-		InstallationID: event.GetInstallation().GetID(),
-		Action:         event.GetAction(),
-	}
-
-	// Extract requested_reviewer for review_requested events
-	if info.Action == "review_requested" {
-		info.RequestedReviewerLogin = extractRequestedReviewer(body)
-	}
-
-	return info, nil
-}
-
-func extractRequestedReviewer(body []byte) string {
-	var payload struct {
-		RequestedReviewer struct {
-			Login string `json:"login"`
-		} `json:"requested_reviewer"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return ""
-	}
-	return payload.RequestedReviewer.Login
-}
-
 func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) ([]byte, *PRInfo, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -102,20 +58,90 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) ([]byte,
 	}
 
 	eventType := r.Header.Get("X-GitHub-Event")
-	if eventType != "pull_request" {
-		return body, nil, nil // not a PR event, skip
-	}
-
-	info, err := h.ParsePREvent(body)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Handle opened, synchronize, and review_requested
-	switch info.Action {
-	case "opened", "synchronize", "review_requested":
-		return body, info, nil
+	switch eventType {
+	case "pull_request":
+		return h.handlePREvent(body)
+	case "issue_comment":
+		return h.handleCommentEvent(body)
 	default:
-		return body, info, nil // skip, no error
+		return body, nil, nil
+	}
+}
+
+func (h *WebhookHandler) handlePREvent(body []byte) ([]byte, *PRInfo, error) {
+	event := &gh.PullRequestEvent{}
+	if err := json.Unmarshal(body, event); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal PR event: %w", err)
+	}
+
+	pr := event.GetPullRequest()
+	if pr == nil || pr.Base == nil || pr.Head == nil {
+		return nil, nil, fmt.Errorf("invalid PR event: missing pull request data")
+	}
+
+	if event.GetAction() != "opened" && event.GetAction() != "synchronize" {
+		return body, nil, nil
+	}
+
+	info := buildPRInfo(event.GetRepo(), pr, event.GetInstallation(), event.GetAction())
+	return body, info, nil
+}
+
+func (h *WebhookHandler) handleCommentEvent(body []byte) ([]byte, *PRInfo, error) {
+	event := &gh.IssueCommentEvent{}
+	if err := json.Unmarshal(body, event); err != nil {
+		return nil, nil, fmt.Errorf("unmarshal comment event: %w", err)
+	}
+
+	// Only handle created comments, not edits or deletions
+	if event.GetAction() != "created" {
+		return body, nil, nil
+	}
+
+	// Must be a PR comment, not a regular issue comment
+	issue := event.GetIssue()
+	if issue == nil || !issue.IsPullRequest() {
+		return body, nil, nil
+	}
+
+	// Check for trigger phrase
+	comment := event.GetComment()
+	if comment == nil || !isReviewTrigger(comment.GetBody()) {
+		return body, nil, nil
+	}
+
+	// Build PR info from the issue (which is a PR)
+	info := &PRInfo{
+		Owner:          event.GetRepo().GetOwner().GetLogin(),
+		Repo:           event.GetRepo().GetName(),
+		PRNumber:       issue.GetNumber(),
+		InstallationID: event.GetInstallation().GetID(),
+		Action:         "comment",
+	}
+
+	return body, info, nil
+}
+
+func isReviewTrigger(body string) bool {
+	triggers := []string{"@prreviewer-app review", "@pr-reviewer review"}
+	for _, t := range triggers {
+		if body == t || len(body) >= len(t) && body[:len(t)] == t {
+			return true
+		}
+	}
+	return false
+}
+
+func buildPRInfo(repo *gh.Repository, pr *gh.PullRequest, install *gh.Installation, action string) *PRInfo {
+	return &PRInfo{
+		Owner:          repo.GetOwner().GetLogin(),
+		Repo:           repo.GetName(),
+		PRNumber:       pr.GetNumber(),
+		BaseRef:        pr.Base.GetRef(),
+		HeadRef:        pr.Head.GetRef(),
+		BaseSHA:        pr.Base.GetSHA(),
+		HeadSHA:        pr.Head.GetSHA(),
+		InstallationID: install.GetID(),
+		Action:         action,
 	}
 }
