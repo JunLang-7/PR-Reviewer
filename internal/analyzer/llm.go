@@ -2,7 +2,6 @@ package analyzer
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -46,6 +45,5 @@ func (c *anthropicClient) Chat(ctx context.Context, model, systemPrompt, userMes
 	}
 
 	result := sb.String()
-	fmt.Printf("[llm] response: streaming, text=%d bytes\n", len(result))
 	return result, nil
 }
