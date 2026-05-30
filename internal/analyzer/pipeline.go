@@ -115,16 +115,12 @@ func (input PipelineInput) buildRiskPrompt() string {
 
 func (input PipelineInput) buildSuggestionPrompt(risks []Risk) string {
 	var sb strings.Builder
-	sb.WriteString("请对以下 PR 变更提供具体的代码改进建议：\n\n")
+	sb.WriteString("请对以下 PR 变更中的代码提供行级改进建议：\n\n")
 
-	if len(risks) > 0 {
-		sb.WriteString("## 已识别的风险\n")
-		for _, r := range risks {
-			sb.WriteString(fmt.Sprintf("- [%s] %s (%s:%d)\n", r.Severity, r.Title, r.File, r.Line))
-		}
-		sb.WriteString("\n")
-	}
+	sb.WriteString("## 变更 Diff\n")
+	sb.WriteString(codeBlock("diff", truncate(input.Diff, 5000)))
 
+	sb.WriteString("\n## 变更文件完整内容\n")
 	for path, content := range input.FileContents {
 		sb.WriteString(fmt.Sprintf("\n### %s\n", path))
 		sb.WriteString(codeBlock("", truncate(content, 3000)))
@@ -335,10 +331,125 @@ func extractLine(text string) int {
 }
 
 func parseSuggestionResponse(resp string) []Suggestion {
-	if resp == "" {
+	if resp == "" || strings.TrimSpace(resp) == "无" {
 		return nil
 	}
-	return nil
+
+	var suggestions []Suggestion
+
+	// Split by "### " to get file sections
+	sections := strings.Split(resp, "\n### ")
+	for _, section := range sections {
+		section = strings.TrimSpace(section)
+		section = strings.TrimPrefix(section, "### ")
+		if section == "" {
+			continue
+		}
+
+		// First line is the file path
+		lines := strings.SplitN(section, "\n", 2)
+		filePath := strings.TrimSpace(lines[0])
+		if filePath == "" || filePath == "无" {
+			continue
+		}
+
+		body := ""
+		if len(lines) > 1 {
+			body = lines[1]
+		}
+
+		// Parse individual suggestions within this file section
+		items := strings.Split(body, "\n- **")
+		for _, item := range items {
+			item = strings.TrimSpace(item)
+			item = strings.TrimPrefix(item, "- **")
+			if item == "" || item == "无" {
+				continue
+			}
+
+			s := parseSuggestionItem(item, filePath)
+			if s != nil {
+				suggestions = append(suggestions, *s)
+			}
+		}
+	}
+
+	return suggestions
+}
+
+func parseSuggestionItem(item, filePath string) *Suggestion {
+	// Format: <line>** <description>\n  ```<lang>\n  <code>```
+	// Find the line number (first characters until **)
+	firstLineEnd := strings.Index(item, "\n")
+	headline := item
+	rest := ""
+	if firstLineEnd >= 0 {
+		headline = item[:firstLineEnd]
+		rest = strings.TrimSpace(item[firstLineEnd+1:])
+	}
+	headline = strings.TrimSpace(headline)
+
+	// Extract line number: digits before "**"
+	lineNum := 0
+	starIdx := strings.Index(headline, "**")
+	if starIdx >= 0 {
+		lineStr := strings.TrimSpace(headline[:starIdx])
+		if n, err := strconv.Atoi(lineStr); err == nil {
+			lineNum = n
+		}
+	} else {
+		// Try to parse just a number at start
+		parts := strings.Fields(headline)
+		if len(parts) > 0 {
+			if n, err := strconv.Atoi(parts[0]); err == nil {
+				lineNum = n
+			}
+		}
+	}
+
+	// Description: after "** " until code block or end
+	descStart := starIdx + 2
+	if descStart >= 0 && descStart < len(headline) {
+		// Skip "**"
+	}
+
+	description := ""
+	codeSnippet := ""
+
+	if strings.Contains(rest, "```") {
+		// Has code block
+		descEnd := strings.Index(rest, "```")
+		if descEnd >= 0 {
+			description = strings.TrimSpace(rest[:descEnd])
+			// Extract code between first and second ```
+			codeStart := strings.Index(rest[descEnd:], "\n")
+			if codeStart >= 0 {
+				codeBody := rest[descEnd+codeStart+1:]
+				codeEnd := strings.Index(codeBody, "```")
+				if codeEnd >= 0 {
+					codeSnippet = strings.TrimSpace(codeBody[:codeEnd])
+				}
+			}
+		}
+	} else {
+		description = rest
+	}
+
+	// If no structured description found, use headline after "** "
+	if description == "" && starIdx >= 0 {
+		afterStar := headline[starIdx+2:]
+		afterStar = strings.TrimSpace(afterStar)
+		if afterStar != "" {
+			description = afterStar
+		}
+	}
+
+	return &Suggestion{
+		File:        filePath,
+		Line:        lineNum,
+		Description: description,
+		CodeSnippet: codeSnippet,
+	}
 }
 
 const systemPromptSummary = "你是一个代码评审助手。你的任务是用中文简洁地总结 PR 变更内容。\n" +
@@ -365,11 +476,15 @@ const systemPromptRisk = "你是一个代码安全与质量评审专家。请识
 	"### Suggestion\n" +
 	"..."
 
-const systemPromptSuggestion = "你是一个代码改进顾问。请对以下代码提供具体的优化建议。\n" +
-	"重点关注：\n" +
-	"- 代码可读性和命名\n" +
-	"- 性能优化\n" +
-	"- 测试覆盖\n" +
-	"- 最佳实践\n" +
-	"\n" +
-	"请提供具体的行级建议和代码示例。"
+	const systemPromptSuggestion = "你是一个代码改进顾问。请对以下代码提供具体的优化建议。\n" +
+		"重点关注：代码可读性、性能、测试覆盖、最佳实践。\n" +
+		"\n" +
+		"请按以下格式回复，每个文件一个区块：\n" +
+		"\n" +
+		"### <文件路径>\n" +
+		"- **<行号>** <简短描述>\n" +
+		"  ```<语言>\n" +
+		"  <改进后的代码示例>\n" +
+		"  ```\n" +
+		"\n" +
+		"如果没有建议，回复'无'。"

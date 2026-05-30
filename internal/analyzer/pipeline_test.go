@@ -212,3 +212,75 @@ func TestExtractFileLine(t *testing.T) {
 		t.Errorf("expected 153, got %d", line)
 	}
 }
+
+func TestParseSuggestionResponse_Standard(t *testing.T) {
+	resp := "### main.go\n" +
+		"- **42** 使用 strings.Builder 替代字符串拼接\n" +
+		"  ```go\n" +
+		"  var b strings.Builder\n" +
+		"  b.WriteString(\"hello\")\n" +
+		"  ```\n" +
+		"- **58** 使用 http.HandlerFunc 替代自定义类型\n" +
+		"  ```go\n" +
+		"  http.HandleFunc(\"/\", handler)\n" +
+		"  ```\n" +
+		"\n" +
+		"### handler/auth.go\n" +
+		"- **15** 密码比较应使用常量时间比较\n" +
+		"  ```go\n" +
+		"  subtle.ConstantTimeCompare(a, b)\n" +
+		"  ```"
+
+	suggestions := parseSuggestionResponse(resp)
+	if len(suggestions) != 3 {
+		t.Fatalf("expected 3 suggestions, got %d", len(suggestions))
+	}
+
+	// First suggestion
+	if suggestions[0].File != "main.go" {
+		t.Errorf("expected file 'main.go', got '%s'", suggestions[0].File)
+	}
+	if suggestions[0].Line != 42 {
+		t.Errorf("expected line 42, got %d", suggestions[0].Line)
+	}
+	if suggestions[0].CodeSnippet == "" {
+		t.Error("expected code snippet")
+	}
+
+	// Second suggestion
+	if suggestions[1].File != "main.go" {
+		t.Errorf("expected file 'main.go', got '%s'", suggestions[1].File)
+	}
+	if suggestions[1].Line != 58 {
+		t.Errorf("expected line 58, got %d", suggestions[1].Line)
+	}
+
+	// Third suggestion (different file)
+	if suggestions[2].File != "handler/auth.go" {
+		t.Errorf("expected file 'handler/auth.go', got '%s'", suggestions[2].File)
+	}
+}
+
+func TestParseSuggestionResponse_Empty(t *testing.T) {
+	if s := parseSuggestionResponse(""); s != nil {
+		t.Error("expected nil for empty")
+	}
+	if s := parseSuggestionResponse("无"); s != nil {
+		t.Error("expected nil for '无'")
+	}
+}
+
+func TestParseSuggestionResponse_NoCodeBlock(t *testing.T) {
+	resp := "### utils/helper.go\n- **10** 函数名应更清晰反映用途\n  建议改为 parseUserInput"
+
+	suggestions := parseSuggestionResponse(resp)
+	if len(suggestions) != 1 {
+		t.Fatalf("expected 1 suggestion, got %d", len(suggestions))
+	}
+	if suggestions[0].CodeSnippet != "" {
+		t.Error("expected empty code snippet")
+	}
+	if suggestions[0].Description == "" {
+		t.Error("expected description")
+	}
+}
