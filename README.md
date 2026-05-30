@@ -2,6 +2,26 @@
 
 基于 AI 的 GitHub Pull Request 自动评审工具。提交 PR 后自动分析代码变更，生成结构化 Review 评论。
 
+[![Install](https://img.shields.io/badge/GitHub%20App-Install-blue)](https://github.com/apps/prreviewer-app)
+
+## 使用教程
+
+### 安装 App
+
+点击上方 **Install** 按钮，选择要启用 AI Review 的仓库。
+
+### 自动触发
+
+安装后，每当仓库有 PR 创建或推送新 commit 时，App 会自动进行 AI Review 并发布评论。
+
+### 手动触发
+
+在 PR 下评论以下指令即可手动触发：
+
+```
+@prreviewer-app review
+```
+
 ## 工作流程
 
 ```
@@ -11,7 +31,9 @@ PR 提交 → Webhook → 获取变更上下文 → AI 分析 → 发布 Review 
 - **Stage 1**: 变更总结（轻量模型，快速概览 PR 目的和影响范围）
 - **Stage 2**: 风险识别（主力模型，扫描安全漏洞、逻辑错误、并发问题、破坏性变更，含 Copilot 风格 diff 修复建议）
 
-## 快速开始
+## 自部署
+
+如果你想运行自己的实例，按以下步骤操作。
 
 ### 1. 创建 GitHub App
 
@@ -78,18 +100,6 @@ https://xxxx.ngrok-free.app/webhook
 ### 5. 安装 App 到仓库
 
 在 GitHub App 设置页 → Install App → 选择目标仓库。
-
-然后在仓库提一个 PR，等待几秒即可看到 AI Review 评论。
-
-## 手动触发
-
-除了 PR 创建和推送时自动触发，也可以在 PR 下发评论指令手动触发：
-
-```
-@prreviewer-app review
-```
-
-手动触发适用于想对特定 PR 请求 AI Review 的场景。
 
 ## 配置说明
 
