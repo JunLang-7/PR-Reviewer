@@ -3,6 +3,7 @@
 基于 AI 的 GitHub Pull Request 自动评审工具。提交 PR 后自动分析代码变更，生成结构化 Review 评论。
 
 [![Install](https://img.shields.io/badge/GitHub%20App-Install-blue)](https://github.com/apps/prreviewer-app)
+[![Demo](https://img.shields.io/badge/Bilibili-演示视频-00A1D6)](https://www.bilibili.com/video/BV1eqVV6aEKL/)
 
 ## 使用教程
 
@@ -123,7 +124,7 @@ https://xxxx.ngrok-free.app/webhook
 
 ## 设计思路
 
-架构设计、模型选择、扩展性等设计思路详见 [docs/design.md](docs/design.md)。
+架构设计、模型选择、扩展性等设计思路详见 [设计文档](docs/design.md)。
 
 ## 项目结构
 
