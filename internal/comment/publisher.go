@@ -92,7 +92,6 @@ func (f *Formatter) formatRisk(r analyzer.Risk) string {
 	if r.FixSuggestion != "" {
 		sb.WriteString(fmt.Sprintf("  >\n%s\n", r.FixSuggestion))
 	}
-	sb.WriteString(fmt.Sprintf("  > 置信度: %s | 严重度: %s\n\n", r.Confidence, r.Severity))
 	return sb.String()
 }
 
