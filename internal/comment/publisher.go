@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-github/v69/github"
 
 	"github.com/junlang/PRReviewer/internal/analyzer"
+	prcontext "github.com/junlang/PRReviewer/internal/context"
 )
 
 func getLocation() *time.Location {
@@ -39,20 +40,29 @@ func NewFormatter(owner, repo string, prNumber int) *Formatter {
 	return &Formatter{owner: owner, repo: repo, prNumber: prNumber}
 }
 
-func (f *Formatter) Format(result *analyzer.AnalysisResult) string {
+func (f *Formatter) FormatSummary(result *analyzer.AnalysisResult) string {
 	var sb strings.Builder
 
-	// Header
 	sb.WriteString("## AI Review\n\n")
 
-	// Summary
 	if result.Summary != nil && result.Summary.Error == nil {
 		sb.WriteString("**变更概述**: ")
 		sb.WriteString(result.Summary.Summary)
 		sb.WriteString("\n\n")
 	}
 
-	// Risk Scan
+	return sb.String()
+}
+
+func (f *Formatter) FormatFooter() string {
+	return fmt.Sprintf("---\n\n> AI Reviewer v1 · %s\n", time.Now().In(getLocation()).Format("2006-01-02 15:04:05"))
+}
+
+func (f *Formatter) Format(result *analyzer.AnalysisResult) string {
+	var sb strings.Builder
+
+	sb.WriteString(f.FormatSummary(result))
+
 	sb.WriteString("---\n\n")
 	sb.WriteString("### Risk Scan\n\n")
 
@@ -76,9 +86,7 @@ func (f *Formatter) Format(result *analyzer.AnalysisResult) string {
 		sb.WriteString("> 未发现明显风险\n\n")
 	}
 
-	// Footer
-	sb.WriteString("---\n\n")
-	sb.WriteString(fmt.Sprintf("> AI Reviewer v1 · %s\n", time.Now().In(getLocation()).Format("2006-01-02 15:04:05")))
+	sb.WriteString(f.FormatFooter())
 
 	return sb.String()
 }
@@ -116,6 +124,52 @@ func groupBySeverity(risks []analyzer.Risk) map[string][]analyzer.Risk {
 	return result
 }
 
+// buildInlineComments converts risks into GitHub inline review comments using
+// diff positions. Risks without valid positions are returned as fallback text.
+func buildInlineComments(risks []analyzer.Risk, diffFiles []prcontext.DiffFile) (comments []*github.DraftReviewComment, fallbackBody string) {
+	var fallbackLines []string
+
+	for _, r := range risks {
+		pos := findDiffPosition(diffFiles, r.File, r.Line)
+		if pos > 0 {
+			body := buildCommentBody(r)
+			comments = append(comments, &github.DraftReviewComment{
+				Path:     github.Ptr(r.File),
+				Position: github.Ptr(pos),
+				Body:     github.Ptr(body),
+			})
+		} else {
+			fallbackLines = append(fallbackLines, fmt.Sprintf("- **%s** [`%s:%d`]\n  > %s", r.Title, r.File, r.Line, r.Description))
+		}
+	}
+
+	if len(fallbackLines) > 0 {
+		fallbackBody = "---\n\n### Risk Scan (Fallback)\n\n" + strings.Join(fallbackLines, "\n") + "\n\n"
+	}
+
+	return comments, fallbackBody
+}
+
+func findDiffPosition(diffFiles []prcontext.DiffFile, file string, line int) int {
+	for _, df := range diffFiles {
+		if df.Path == file {
+			return analyzer.FileLineToPosition(df.Patch, line)
+		}
+	}
+	return 0
+}
+
+func buildCommentBody(r analyzer.Risk) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("**%s**\n\n%s", r.Title, r.Description))
+
+	if r.FixSuggestion != "" {
+		sb.WriteString(fmt.Sprintf("\n\n```suggestion\n%s\n```", r.FixSuggestion))
+	}
+
+	return sb.String()
+}
+
 type Publisher struct {
 	client PRReviewClient
 }
@@ -124,14 +178,24 @@ func NewPublisher(client PRReviewClient) *Publisher {
 	return &Publisher{client: client}
 }
 
-func (p *Publisher) Publish(ctx context.Context, owner, repo string, prNumber int, result *analyzer.AnalysisResult) error {
+func (p *Publisher) Publish(ctx context.Context, owner, repo string, prNumber int, result *analyzer.AnalysisResult, diffFiles []prcontext.DiffFile) error {
 	formatter := NewFormatter(owner, repo, prNumber)
-	body := formatter.Format(result)
+
+	var risks []analyzer.Risk
+	if result.Risks != nil {
+		risks = result.Risks.Risks
+	}
+	comments, fallbackBody := buildInlineComments(risks, diffFiles)
+
+	body := formatter.FormatSummary(result)
+	body += fallbackBody
+	body += formatter.FormatFooter()
 
 	event := "COMMENT"
 	review := &github.PullRequestReviewRequest{
-		Body:  &body,
-		Event: &event,
+		Body:     &body,
+		Event:    &event,
+		Comments: comments,
 	}
 	_, _, err := p.client.CreateReview(ctx, owner, repo, prNumber, review)
 	return err

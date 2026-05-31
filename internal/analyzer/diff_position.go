@@ -6,13 +6,15 @@ import (
 )
 
 // FileLineToPosition converts a file line number (in the new version) to a
-// diff position within a single unified diff hunk. Returns 0 if not found.
-func FileLineToPosition(hunk string, targetLine int) int {
+// diff position within a unified diff patch. Returns 0 if not found.
+// Position counts ALL lines in the diff except @@ headers, matching GitHub's
+// definition: "number of lines down from the first @@ hunk header."
+func FileLineToPosition(patch string, targetLine int) int {
 	if targetLine <= 0 {
 		return 0
 	}
 
-	lines := strings.Split(hunk, "\n")
+	lines := strings.Split(patch, "\n")
 	position := 0
 	currentNewLine := 0
 
@@ -25,14 +27,11 @@ func FileLineToPosition(hunk string, targetLine int) int {
 			continue
 		}
 
-		// Skip empty lines and git metadata markers (e.g. "\ No newline at end of file")
-		if line == "" || strings.HasPrefix(line, "\\") {
-			continue
-		}
-
+		// GitHub counts every line in the diff (including empty separator
+		// lines and "\ No newline" markers) toward position.
 		position++
 
-		// Context and added lines count as new file lines
+		// Only new-side lines advance the file line counter.
 		if !strings.HasPrefix(line, "-") {
 			currentNewLine++
 			if currentNewLine == targetLine {

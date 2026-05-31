@@ -109,7 +109,7 @@ func (s *Server) processPR(info *ghclient.PRInfo) {
 	}
 
 	publisher := comment.NewPublisher(ghClient.PullRequests)
-	if err := publisher.Publish(ctx, info.Owner, info.Repo, info.PRNumber, result); err != nil {
+	if err := publisher.Publish(ctx, info.Owner, info.Repo, info.PRNumber, result, prCtx.DiffFiles); err != nil {
 		log.Printf("[%s/%s #%d] 发布评论失败: %v", info.Owner, info.Repo, info.PRNumber, err)
 		return
 	}
