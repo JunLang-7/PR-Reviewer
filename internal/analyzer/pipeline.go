@@ -200,20 +200,10 @@ func parseRiskBlock(block string) *Risk {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "**建议**：") || strings.HasPrefix(trimmed, "**建议**:") {
 			suggestionIdx = i
-			suggestionContent := strings.TrimPrefix(trimmed, "**建议**：")
-			suggestionContent = strings.TrimPrefix(suggestionContent, "**建议**:")
-			fixSuggestion = strings.TrimSpace(suggestionContent)
-			// Collect remaining lines after 建议 header
-			if i+1 < bodyEnd {
-				rest := strings.TrimSpace(strings.Join(bodyLines[i+1:bodyEnd], "\n"))
-				if rest != "" {
-					if fixSuggestion != "" {
-						fixSuggestion += "\n" + rest
-					} else {
-						fixSuggestion = rest
-					}
-				}
-			}
+			raw := strings.TrimSpace(strings.Join(bodyLines[i:bodyEnd], "\n"))
+			raw = strings.TrimPrefix(raw, "**建议**：")
+			raw = strings.TrimPrefix(raw, "**建议**:")
+			fixSuggestion = strings.TrimSpace(raw)
 			break
 		}
 	}
