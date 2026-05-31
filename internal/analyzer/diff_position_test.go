@@ -62,6 +62,34 @@ func TestFileLineToPosition_FirstLine(t *testing.T) {
 	}
 }
 
+func TestFileLineToPosition_NoNewlineMarker(t *testing.T) {
+	patch := `@@ -1,3 +1,4 @@
+ line1
+ line2
++line3
+ line4
+\ No newline at end of file
+@@ -10,3 +10,4 @@
+ line10
++line11
+ line12
+ line13`
+
+	// line 11 is in the second hunk. The "\ No newline" marker at position 5
+	// should count toward position but NOT advance currentNewLine.
+	// position sequence: line1(1) line2(2) +line3(3) line4(4) \(5) line10(6) +line11(7)
+	pos := FileLineToPosition(patch, 11)
+	if pos != 7 {
+		t.Errorf("expected position 7 for line 11 with no-newline marker, got %d", pos)
+	}
+
+	// line 4: position should be 4 (marker doesn't affect position of this line)
+	pos = FileLineToPosition(patch, 4)
+	if pos != 4 {
+		t.Errorf("expected position 4 for line 4, got %d", pos)
+	}
+}
+
 func TestParseHunkNewStart(t *testing.T) {
 	tests := []struct {
 		header string

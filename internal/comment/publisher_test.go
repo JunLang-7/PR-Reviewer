@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-github/v69/github"
 
 	"github.com/junlang/PRReviewer/internal/analyzer"
+	prcontext "github.com/junlang/PRReviewer/internal/context"
 )
 
 type mockReviewClient struct {
@@ -71,7 +72,7 @@ func TestPublisher_PostComment(t *testing.T) {
 	ctx := context.Background()
 
 	result := buildTestResult("test summary", nil)
-	err := pub.Publish(ctx, "owner", "repo", 1, result)
+	err := pub.Publish(ctx, "owner", "repo", 1, result, nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -82,6 +83,151 @@ func TestPublisher_PostComment(t *testing.T) {
 	body := mock.reviews[0].GetBody()
 	if !strings.Contains(body, "test summary") {
 		t.Error("review should contain summary")
+	}
+	if !strings.Contains(body, "AI Reviewer") {
+		t.Error("review should contain footer")
+	}
+}
+
+func TestBuildInlineComments_WithFixSuggestion(t *testing.T) {
+	risks := []analyzer.Risk{
+		{Title: "SQL 注入", File: "db.go", Line: 3, Severity: "critical", Description: "直接拼接 SQL", FixSuggestion: "使用参数化查询"},
+	}
+	diffFiles := []prcontext.DiffFile{
+		{Path: "db.go", Patch: "@@ -1,3 +1,4 @@\n line1\n line2\n+line3\n line4"},
+	}
+
+	comments, fallback := buildInlineComments(risks, diffFiles)
+
+	if len(comments) != 1 {
+		t.Fatalf("expected 1 inline comment, got %d", len(comments))
+	}
+	if fallback != "" {
+		t.Error("fallback body should be empty when all risks have valid positions")
+	}
+	if comments[0].GetPath() != "db.go" {
+		t.Errorf("expected path db.go, got %s", comments[0].GetPath())
+	}
+	if comments[0].GetPosition() != 3 {
+		t.Errorf("expected position 3, got %d", comments[0].GetPosition())
+	}
+	if !strings.Contains(comments[0].GetBody(), "SQL 注入") {
+		t.Error("comment body should contain risk title")
+	}
+	if !strings.Contains(comments[0].GetBody(), "修复建议") {
+		t.Error("comment body should contain 修复建议 section")
+	}
+	if !strings.Contains(comments[0].GetBody(), "使用参数化查询") {
+		t.Error("comment body should contain fix suggestion content")
+	}
+}
+
+func TestBuildInlineComments_NoFixSuggestionWhenEmpty(t *testing.T) {
+	risks := []analyzer.Risk{
+		{Title: "错误忽略", File: "api.go", Line: 3, Severity: "warning", Description: "err 未检查", FixSuggestion: ""},
+	}
+	diffFiles := []prcontext.DiffFile{
+		{Path: "api.go", Patch: "@@ -1,3 +1,4 @@\n line1\n line2\n+line3\n line4"},
+	}
+
+	comments, _ := buildInlineComments(risks, diffFiles)
+
+	if len(comments) != 1 {
+		t.Fatalf("expected 1 inline comment, got %d", len(comments))
+	}
+	if strings.Contains(comments[0].GetBody(), "修复建议") {
+		t.Error("comment body should NOT contain fix suggestion section when empty")
+	}
+}
+
+func TestBuildInlineComments_FallbackWhenNoPosition(t *testing.T) {
+	risks := []analyzer.Risk{
+		{Title: "行号不存在", File: "unknown.go", Line: 999, Severity: "warning", Description: "某问题", FixSuggestion: "使用参数化查询"},
+		{Title: "有效风险", File: "main.go", Line: 3, Severity: "critical", Description: "严重问题"},
+	}
+	diffFiles := []prcontext.DiffFile{
+		{Path: "main.go", Patch: "@@ -1,3 +1,4 @@\n line1\n line2\n+line3\n line4"},
+	}
+
+	comments, fallback := buildInlineComments(risks, diffFiles)
+
+	if len(comments) != 1 {
+		t.Fatalf("expected 1 inline comment, got %d", len(comments))
+	}
+	if !strings.Contains(fallback, "行号不存在") {
+		t.Error("fallback body should contain risk with no diff position")
+	}
+	if !strings.Contains(fallback, "使用参数化查询") {
+		t.Error("fallback body should contain FixSuggestion")
+	}
+	if strings.Contains(fallback, "有效风险") {
+		t.Error("fallback body should NOT contain risk that has valid inline comment")
+	}
+}
+
+func TestBuildInlineComments_FallbackNoFixSuggestion(t *testing.T) {
+	risks := []analyzer.Risk{
+		{Title: "无建议", File: "unknown.go", Line: 999, Severity: "warning", Description: "某问题", FixSuggestion: ""},
+	}
+	diffFiles := []prcontext.DiffFile{}
+
+	_, fallback := buildInlineComments(risks, diffFiles)
+
+	if strings.Contains(fallback, "  >\n  > ") {
+		t.Error("fallback body should NOT contain empty fix suggestion blockquote")
+	}
+}
+
+func TestFormatRisk_BlockquotesFixSuggestion(t *testing.T) {
+	f := NewFormatter("o", "r", 1)
+	r := analyzer.Risk{
+		Title: "SQL 注入", File: "db.go", Line: 42, Severity: "critical",
+		Description: "直接拼接 SQL", FixSuggestion: "使用参数化查询",
+	}
+	body := f.formatRisk(r)
+
+	if !strings.Contains(body, "  > 使用参数化查询") {
+		t.Errorf("FixSuggestion should be blockquoted with '  > ', got:\n%s", body)
+	}
+}
+
+func TestBuildInlineComments_EmptyRisks(t *testing.T) {
+	comments, fallback := buildInlineComments(nil, nil)
+
+	if comments != nil {
+		t.Error("expected nil comments for empty risks")
+	}
+	if fallback != "" {
+		t.Error("expected empty fallback for empty risks")
+	}
+}
+
+func TestPublisher_PostComment_WithDiffFiles(t *testing.T) {
+	mock := &mockReviewClient{}
+	pub := NewPublisher(mock)
+	ctx := context.Background()
+
+	result := buildTestResult("test summary", []analyzer.Risk{
+		{Title: "风险1", File: "main.go", Line: 3, Severity: "warning", Description: "问题描述", FixSuggestion: "修复代码"},
+	})
+	diffFiles := []prcontext.DiffFile{
+		{Path: "main.go", Patch: "@@ -1,3 +1,4 @@\n line1\n line2\n+line3\n line4"},
+	}
+
+	err := pub.Publish(ctx, "owner", "repo", 1, result, diffFiles)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.reviews) != 1 {
+		t.Fatalf("expected 1 review, got %d", len(mock.reviews))
+	}
+	if len(mock.reviews[0].Comments) != 1 {
+		t.Fatalf("expected 1 inline comment, got %d", len(mock.reviews[0].Comments))
+	}
+	body := mock.reviews[0].GetBody()
+	if !strings.Contains(body, "test summary") {
+		t.Error("review body should contain summary")
 	}
 	if !strings.Contains(body, "AI Reviewer") {
 		t.Error("review should contain footer")

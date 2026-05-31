@@ -192,7 +192,32 @@ func parseRiskBlock(block string) *Risk {
 	}
 
 	description := strings.Join(bodyLines[:bodyEnd], "\n")
+
+	// Extract FixSuggestion from **建议**： field
+	fixSuggestion := ""
+	suggestionIdx := -1
+	for i, line := range bodyLines[:bodyEnd] {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "**建议**：") || strings.HasPrefix(trimmed, "**建议**:") {
+			suggestionIdx = i
+			raw := strings.TrimSpace(strings.Join(bodyLines[i:bodyEnd], "\n"))
+			raw = strings.TrimPrefix(raw, "**建议**：")
+			raw = strings.TrimPrefix(raw, "**建议**:")
+			fixSuggestion = strings.TrimSpace(raw)
+			break
+		}
+	}
+
+	// Remove 建议 section from description
+	if suggestionIdx >= 0 {
+		descLines := bodyLines[:suggestionIdx]
+		description = strings.Join(descLines, "\n")
+	}
+
 	description = strings.TrimSpace(description)
+	if description == "" && fixSuggestion != "" {
+		description = fixSuggestion
+	}
 	if description == "" {
 		return nil
 	}
@@ -215,7 +240,7 @@ func parseRiskBlock(block string) *Risk {
 		Severity:      severity,
 		Confidence:    "medium",
 		Description:   description,
-		FixSuggestion: "",
+		FixSuggestion: fixSuggestion,
 	}
 }
 

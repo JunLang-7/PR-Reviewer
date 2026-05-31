@@ -250,6 +250,83 @@ func TestParseRiskResponse_MissingField(t *testing.T) {
 	}
 }
 
+func TestParseRiskBlock_ExtractsFixSuggestion(t *testing.T) {
+	resp := "[server/tag.go:23](ref):\n" +
+		"**问题**：NewTagServer returns nil auth\n" +
+		"**后果**：GetTagList dereferences and panics\n" +
+		"**建议**：检查 auth 是否为 nil\n" +
+		"严重程度: critical\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 1 {
+		t.Fatalf("expected 1 risk, got %d", len(risks))
+	}
+	if risks[0].FixSuggestion != "检查 auth 是否为 nil" {
+		t.Errorf("expected FixSuggestion '检查 auth 是否为 nil', got '%s'", risks[0].FixSuggestion)
+	}
+	if strings.Contains(risks[0].Description, "**建议**") {
+		t.Error("Description should not contain 建议 field after extraction")
+	}
+	if !strings.Contains(risks[0].Description, "**问题**") {
+		t.Error("Description should still contain 问题 field")
+	}
+	if !strings.Contains(risks[0].Description, "**后果**") {
+		t.Error("Description should still contain 后果 field")
+	}
+}
+
+func TestParseRiskBlock_FixSuggestionEmptyWhenMissing(t *testing.T) {
+	resp := "[server/tag.go:23](ref):\n" +
+		"**问题**：NewTagServer returns nil auth\n" +
+		"**后果**：GetTagList dereferences and panics\n" +
+		"严重程度: critical\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 1 {
+		t.Fatalf("expected 1 risk, got %d", len(risks))
+	}
+	if risks[0].FixSuggestion != "" {
+		t.Errorf("expected empty FixSuggestion, got '%s'", risks[0].FixSuggestion)
+	}
+}
+
+func TestParseRiskBlock_FixSuggestionMultilineEmptyLabel(t *testing.T) {
+	resp := "[api/handler.go:10](ref):\n" +
+		"**问题**：缺少输入校验\n" +
+		"**建议**：\n" +
+		"添加参数校验逻辑\n" +
+		"防止空值传入\n" +
+		"严重程度: warning\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 1 {
+		t.Fatalf("expected 1 risk, got %d", len(risks))
+	}
+	if !strings.HasPrefix(risks[0].FixSuggestion, "添加参数校验") {
+		t.Errorf("expected FixSuggestion '添加参数校验...', got '%s'", risks[0].FixSuggestion)
+	}
+	if strings.HasPrefix(risks[0].FixSuggestion, "\n") {
+		t.Error("FixSuggestion should not start with newline when label is empty")
+	}
+}
+
+func TestParseRiskBlock_OnlyFixSuggestion(t *testing.T) {
+	resp := "[config/app.go:5](ref):\n" +
+		"**建议**：使用环境变量替换硬编码密钥\n" +
+		"严重程度: warning\n"
+
+	risks := parseRiskResponse(resp)
+	if len(risks) != 1 {
+		t.Fatalf("expected 1 risk, got %d", len(risks))
+	}
+	if risks[0].FixSuggestion != "使用环境变量替换硬编码密钥" {
+		t.Errorf("expected FixSuggestion, got '%s'", risks[0].FixSuggestion)
+	}
+	if !strings.Contains(risks[0].Description, "使用环境变量替换硬编码密钥") {
+		t.Error("Description should contain fixSuggestion content when only 建议 exists")
+	}
+}
+
 func TestParseRiskResponse_EmptyBody(t *testing.T) {
 	resp := "[empty.go:1](ref):\n" +
 		"严重程度: suggestion\n" +
