@@ -205,13 +205,13 @@ func parseRiskBlock(block string) *Risk {
 			fixSuggestion = strings.TrimSpace(suggestionContent)
 			// Collect remaining lines after 建议 header
 			if i+1 < bodyEnd {
-				restLines := bodyLines[i+1 : bodyEnd]
-				rest := strings.TrimSpace(strings.Join(restLines, "\n"))
+				rest := strings.TrimSpace(strings.Join(bodyLines[i+1:bodyEnd], "\n"))
 				if rest != "" {
 					if fixSuggestion != "" {
-						fixSuggestion += "\n"
+						fixSuggestion += "\n" + rest
+					} else {
+						fixSuggestion = rest
 					}
-					fixSuggestion += rest
 				}
 			}
 			break
@@ -225,6 +225,9 @@ func parseRiskBlock(block string) *Risk {
 	}
 
 	description = strings.TrimSpace(description)
+	if description == "" && fixSuggestion != "" {
+		description = "**修复建议**：" + fixSuggestion
+	}
 	if description == "" {
 		return nil
 	}
