@@ -128,7 +128,7 @@ https://xxxx.ngrok-free.app/webhook
 
 ## 设计思路
 
-架构设计、模型选择、扩展性等设计思路详见 [设计文档](docs/design.md)。
+架构设计、模型选择、扩展性等设计思路详见 [设计文档](docs/design.md)。未来扩展方向详见 [扩展文档](docs/future.md)。
 
 ## 项目结构
 
