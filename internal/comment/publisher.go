@@ -3,6 +3,7 @@ package comment
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -10,6 +11,18 @@ import (
 
 	"github.com/junlang/PRReviewer/internal/analyzer"
 )
+
+func getLocation() *time.Location {
+	tz := os.Getenv("TZ")
+	if tz == "" {
+		tz = "Asia/Shanghai"
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.FixedZone(tz, 8*60*60)
+	}
+	return loc
+}
 
 // PRReviewClient abstracts the GitHub Pull Requests API for creating reviews.
 type PRReviewClient interface {
@@ -65,7 +78,7 @@ func (f *Formatter) Format(result *analyzer.AnalysisResult) string {
 
 	// Footer
 	sb.WriteString("---\n\n")
-	sb.WriteString(fmt.Sprintf("> AI Reviewer v1 · %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	sb.WriteString(fmt.Sprintf("> AI Reviewer v1 · %s\n", time.Now().In(getLocation()).Format("2006-01-02 15:04:05")))
 
 	return sb.String()
 }
