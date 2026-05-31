@@ -142,7 +142,7 @@ func TestBuildInlineComments_NoFixSuggestionWhenEmpty(t *testing.T) {
 
 func TestBuildInlineComments_FallbackWhenNoPosition(t *testing.T) {
 	risks := []analyzer.Risk{
-		{Title: "行号不存在", File: "unknown.go", Line: 999, Severity: "warning", Description: "某问题"},
+		{Title: "行号不存在", File: "unknown.go", Line: 999, Severity: "warning", Description: "某问题", FixSuggestion: "使用参数化查询"},
 		{Title: "有效风险", File: "main.go", Line: 3, Severity: "critical", Description: "严重问题"},
 	}
 	diffFiles := []prcontext.DiffFile{
@@ -157,8 +157,37 @@ func TestBuildInlineComments_FallbackWhenNoPosition(t *testing.T) {
 	if !strings.Contains(fallback, "行号不存在") {
 		t.Error("fallback body should contain risk with no diff position")
 	}
+	if !strings.Contains(fallback, "使用参数化查询") {
+		t.Error("fallback body should contain FixSuggestion")
+	}
 	if strings.Contains(fallback, "有效风险") {
 		t.Error("fallback body should NOT contain risk that has valid inline comment")
+	}
+}
+
+func TestBuildInlineComments_FallbackNoFixSuggestion(t *testing.T) {
+	risks := []analyzer.Risk{
+		{Title: "无建议", File: "unknown.go", Line: 999, Severity: "warning", Description: "某问题", FixSuggestion: ""},
+	}
+	diffFiles := []prcontext.DiffFile{}
+
+	_, fallback := buildInlineComments(risks, diffFiles)
+
+	if strings.Contains(fallback, "  >\n  > ") {
+		t.Error("fallback body should NOT contain empty fix suggestion blockquote")
+	}
+}
+
+func TestFormatRisk_BlockquotesFixSuggestion(t *testing.T) {
+	f := NewFormatter("o", "r", 1)
+	r := analyzer.Risk{
+		Title: "SQL 注入", File: "db.go", Line: 42, Severity: "critical",
+		Description: "直接拼接 SQL", FixSuggestion: "使用参数化查询",
+	}
+	body := f.formatRisk(r)
+
+	if !strings.Contains(body, "  > 使用参数化查询") {
+		t.Errorf("FixSuggestion should be blockquoted with '  > ', got:\n%s", body)
 	}
 }
 

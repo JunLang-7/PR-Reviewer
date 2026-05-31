@@ -111,7 +111,7 @@ func (f *Formatter) formatRisk(r analyzer.Risk) string {
 	sb.WriteString(fmt.Sprintf("- **%s** [`%s:%d`](%s)\n", r.Title, r.File, r.Line, link))
 	sb.WriteString(fmt.Sprintf("  > %s\n", r.Description))
 	if r.FixSuggestion != "" {
-		sb.WriteString(fmt.Sprintf("  >\n%s\n", r.FixSuggestion))
+		sb.WriteString(fmt.Sprintf("  >\n  > %s\n", r.FixSuggestion))
 	}
 	return sb.String()
 }
@@ -139,7 +139,11 @@ func buildInlineComments(risks []analyzer.Risk, diffFiles []prcontext.DiffFile) 
 				Body:     github.Ptr(body),
 			})
 		} else {
-			fallbackLines = append(fallbackLines, fmt.Sprintf("- **%s** [`%s:%d`]\n  > %s", r.Title, r.File, r.Line, r.Description))
+			line := fmt.Sprintf("- **%s** [`%s:%d`]\n  > %s", r.Title, r.File, r.Line, r.Description)
+			if r.FixSuggestion != "" {
+				line += fmt.Sprintf("\n  >\n  > %s", r.FixSuggestion)
+			}
+			fallbackLines = append(fallbackLines, line)
 		}
 	}
 
