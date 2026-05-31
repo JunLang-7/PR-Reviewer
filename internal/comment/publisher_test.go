@@ -93,7 +93,7 @@ func TestFormatComment_Timestamp(t *testing.T) {
 	formatter := NewFormatter("o", "r", 1)
 	body := formatter.Format(result)
 
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().In(getLocation()).Format("2006-01-02")
 	if !strings.Contains(body, today) {
 		t.Errorf("comment should contain today's date %s", today)
 	}
