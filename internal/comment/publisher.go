@@ -164,7 +164,7 @@ func buildCommentBody(r analyzer.Risk) string {
 	sb.WriteString(fmt.Sprintf("**%s**\n\n%s", r.Title, r.Description))
 
 	if r.FixSuggestion != "" {
-		sb.WriteString(fmt.Sprintf("\n\n**修复建议**：\n%s", r.FixSuggestion))
+		sb.WriteString(fmt.Sprintf("\n\n```suggestion\n%s\n```", r.FixSuggestion))
 	}
 
 	return sb.String()
