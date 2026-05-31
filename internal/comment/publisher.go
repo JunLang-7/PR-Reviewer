@@ -164,10 +164,35 @@ func buildCommentBody(r analyzer.Risk) string {
 	sb.WriteString(fmt.Sprintf("**%s**\n\n%s", r.Title, r.Description))
 
 	if r.FixSuggestion != "" {
-		sb.WriteString(fmt.Sprintf("\n\n```suggestion\n%s\n```", r.FixSuggestion))
+		if looksLikeCode(r.FixSuggestion) {
+			sb.WriteString(fmt.Sprintf("\n\n```suggestion\n%s\n```", r.FixSuggestion))
+		} else {
+			sb.WriteString(fmt.Sprintf("\n\n**修复建议**：\n%s", r.FixSuggestion))
+		}
 	}
 
 	return sb.String()
+}
+
+// looksLikeCode returns true if the content appears to be code rather than
+// descriptive prose. It checks for common code indicators like diff markers,
+// programming keywords, brackets, or indentation patterns.
+func looksLikeCode(s string) bool {
+	// Diff-style lines
+	if strings.Contains(s, "\n+") || strings.Contains(s, "\n-") {
+		return true
+	}
+	// Go code indicators
+	for _, kw := range []string{"func ", "func(", "if ", "for ", "return ", "err ", ":= ", "== "} {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	// Generic code structure: braces, semicolons, indentation
+	if strings.Contains(s, "{") || strings.Contains(s, "}") || strings.Contains(s, ";") {
+		return true
+	}
+	return false
 }
 
 type Publisher struct {

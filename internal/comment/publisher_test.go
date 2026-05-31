@@ -89,7 +89,7 @@ func TestPublisher_PostComment(t *testing.T) {
 	}
 }
 
-func TestBuildInlineComments_WithValidPosition(t *testing.T) {
+func TestBuildInlineComments_DescriptiveFixSuggestion(t *testing.T) {
 	risks := []analyzer.Risk{
 		{Title: "SQL 注入", File: "db.go", Line: 3, Severity: "critical", Description: "直接拼接 SQL", FixSuggestion: "使用参数化查询"},
 	}
@@ -114,11 +114,32 @@ func TestBuildInlineComments_WithValidPosition(t *testing.T) {
 	if !strings.Contains(comments[0].GetBody(), "SQL 注入") {
 		t.Error("comment body should contain risk title")
 	}
-	if !strings.Contains(comments[0].GetBody(), "```suggestion") {
-		t.Error("comment body should contain suggestion block")
+	if strings.Contains(comments[0].GetBody(), "```suggestion") {
+		t.Error("comment body should NOT contain suggestion block for descriptive text")
+	}
+	if !strings.Contains(comments[0].GetBody(), "修复建议") {
+		t.Error("comment body should contain 修复建议 section for descriptive text")
 	}
 	if !strings.Contains(comments[0].GetBody(), "使用参数化查询") {
 		t.Error("comment body should contain fix suggestion content")
+	}
+}
+
+func TestBuildInlineComments_CodeFixSuggestion(t *testing.T) {
+	risks := []analyzer.Risk{
+		{Title: "nil 检查缺失", File: "api.go", Line: 5, Severity: "warning", Description: "未检查 err", FixSuggestion: "if err != nil {\n    return err\n}"},
+	}
+	diffFiles := []prcontext.DiffFile{
+		{Path: "api.go", Patch: "@@ -3,3 +3,4 @@\n line3\n line4\n+line5\n line6"},
+	}
+
+	comments, _ := buildInlineComments(risks, diffFiles)
+
+	if len(comments) != 1 {
+		t.Fatalf("expected 1 inline comment, got %d", len(comments))
+	}
+	if !strings.Contains(comments[0].GetBody(), "```suggestion") {
+		t.Error("comment body should contain suggestion block for code-like fix")
 	}
 }
 
@@ -135,8 +156,8 @@ func TestBuildInlineComments_NoFixSuggestionWhenEmpty(t *testing.T) {
 	if len(comments) != 1 {
 		t.Fatalf("expected 1 inline comment, got %d", len(comments))
 	}
-	if strings.Contains(comments[0].GetBody(), "```suggestion") {
-		t.Error("comment body should NOT contain suggestion block when FixSuggestion is empty")
+	if strings.Contains(comments[0].GetBody(), "修复建议") {
+		t.Error("comment body should NOT contain fix suggestion section when empty")
 	}
 }
 
