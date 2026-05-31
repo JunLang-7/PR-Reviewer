@@ -322,8 +322,8 @@ func TestParseRiskBlock_OnlyFixSuggestion(t *testing.T) {
 	if risks[0].FixSuggestion != "使用环境变量替换硬编码密钥" {
 		t.Errorf("expected FixSuggestion, got '%s'", risks[0].FixSuggestion)
 	}
-	if !strings.Contains(risks[0].Description, "修复建议") {
-		t.Error("Description should contain fallback when only 建议 exists")
+	if !strings.Contains(risks[0].Description, "使用环境变量替换硬编码密钥") {
+		t.Error("Description should contain fixSuggestion content when only 建议 exists")
 	}
 }
 

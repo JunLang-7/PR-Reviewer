@@ -216,7 +216,7 @@ func parseRiskBlock(block string) *Risk {
 
 	description = strings.TrimSpace(description)
 	if description == "" && fixSuggestion != "" {
-		description = "**修复建议**：" + fixSuggestion
+		description = fixSuggestion
 	}
 	if description == "" {
 		return nil

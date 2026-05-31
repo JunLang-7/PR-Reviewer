@@ -15,6 +15,9 @@ func FileLineToPosition(patch string, targetLine int) int {
 	}
 
 	lines := strings.Split(patch, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
 	position := 0
 	currentNewLine := 0
 
