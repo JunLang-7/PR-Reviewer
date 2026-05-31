@@ -119,6 +119,22 @@ type RepositoryClient interface {
 | Prompt A/B | 固定 prompt 文件 | 按 `PRNumber % 2` 路由不同 prompt | 创建 `Pipeline{promptA, promptB}` |
 | Stage 间通信 | summary → risk 单向字符串 | risk → 自动生成 fix commit | 扩展 `AnalysisResult`（已预留字段） |
 
+### 行级内联评论与 Suggested Changes
+
+Review 评论发布采用混合模式：有效的 risk 以行级内联评论形式精确标注在 diff 代码行上，position 计算失败的 risk 退回 body 文本展示，不丢失。
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌─────────────────────┐
+│ Risk (LLM)   │────►│ diff patch       │────►│ DraftReviewComment  │
+│ .File .Line  │     │ → FileLineToPos  │     │ .Path .Position     │
+│ .Description │     │ → position (1-   │     │ .Body               │
+│ .FixSug      │     │   based index)   │     │ (incl. 修复建议)     │
+└──────────────┘     └──────────────────┘     └─────────────────────┘
+```
+
+- **定位**：`FileLineToPosition(patch, line)` 将 LLM 输出的文件行号转为 GitHub diff position。该函数按 GitHub 定义计数 diff 中所有行（除 `@@` 头外），支持多 hunk
+- **FixSuggestion**：`parseRiskBlock` 将 `**建议**：` 内容单独提取到 `Risk.FixSuggestion`，内联评论以 `**修复建议**：` 格式展示，body 回退以 blockquote 格式展示
+- **Fallback**：position 为 0 时（文件不匹配或行号不在变更范围内）回退为 body 文本，不丢失风险信息
 ### 不做
 
 - **多轮对话**：每次 Review 是一次性调用，PR 是静态快照，不需要维持对话历史，省去状态管理复杂度

@@ -4,12 +4,6 @@
 
 ## 短期（接口已预留，改动成本低）
 
-### 行级精准评论 + Suggested Changes
-
-当前 Review 评论作为整体 PR Review 发布。可扩展为在具体 diff 行上发布 inline comment，并在评论正文中使用 GitHub 的 `suggestion` 代码块，让作者一键接受修复。
-
-`analyzer.Risk` 已有 `File`/`Line`/`FixSuggestion` 字段。Publisher 侧可在保持现有 `PRReviewClient` 不变的前提下新增行级评论接口，或在 `CreateReview` 请求中填充 draft inline comments；Pipeline 不变。
-
 ### 多平台适配（GitLab / Bitbucket）
 
 `PipelineInput` 与来源完全解耦（只有 `Diff` + `FileContents`）。新写一个 GitLab MR 的 Builder 实现即可，下游 Pipeline 零改动。同理，输出侧实现一个 GitLab MR Note API 的 `PRReviewClient`。
