@@ -31,8 +31,9 @@ func FileLineToPosition(patch string, targetLine int) int {
 		// lines and "\ No newline" markers) toward position.
 		position++
 
-		// Only new-side lines advance the file line counter.
-		if !strings.HasPrefix(line, "-") {
+		// Only new-side file-content lines advance the file line counter.
+		// "\ No newline" markers and empty lines are NOT file lines.
+		if !strings.HasPrefix(line, "-") && !strings.HasPrefix(line, `\`) && line != "" {
 			currentNewLine++
 			if currentNewLine == targetLine {
 				return position

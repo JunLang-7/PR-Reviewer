@@ -114,12 +114,15 @@ func TestBuildInlineComments_WithValidPosition(t *testing.T) {
 	if !strings.Contains(comments[0].GetBody(), "SQL 注入") {
 		t.Error("comment body should contain risk title")
 	}
-	if !strings.Contains(comments[0].GetBody(), "```suggestion") {
-		t.Error("comment body should contain suggestion block")
+	if !strings.Contains(comments[0].GetBody(), "修复建议") {
+		t.Error("comment body should contain fix suggestion section")
+	}
+	if !strings.Contains(comments[0].GetBody(), "使用参数化查询") {
+		t.Error("comment body should contain fix suggestion content")
 	}
 }
 
-func TestBuildInlineComments_NoSuggestedChangeWhenFixSuggestionEmpty(t *testing.T) {
+func TestBuildInlineComments_NoFixSuggestionWhenEmpty(t *testing.T) {
 	risks := []analyzer.Risk{
 		{Title: "错误忽略", File: "api.go", Line: 3, Severity: "warning", Description: "err 未检查", FixSuggestion: ""},
 	}
@@ -132,8 +135,8 @@ func TestBuildInlineComments_NoSuggestedChangeWhenFixSuggestionEmpty(t *testing.
 	if len(comments) != 1 {
 		t.Fatalf("expected 1 inline comment, got %d", len(comments))
 	}
-	if strings.Contains(comments[0].GetBody(), "```suggestion") {
-		t.Error("comment body should NOT contain suggestion block when FixSuggestion is empty")
+	if strings.Contains(comments[0].GetBody(), "修复建议") {
+		t.Error("comment body should NOT contain fix suggestion section when FixSuggestion is empty")
 	}
 }
 
