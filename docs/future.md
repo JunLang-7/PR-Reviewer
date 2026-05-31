@@ -8,7 +8,7 @@
 
 当前 Review 评论作为整体 PR Review 发布。可扩展为在具体 diff 行上发布 inline comment，并在评论正文中使用 GitHub 的 `suggestion` 代码块，让作者一键接受修复。
 
-`analyzer.Risk` 已有 `File`/`Line`/`FixSuggestion` 字段。Publisher 侧扩展现有 `PRReviewClient` 接口（或新增 `CreateReviewComment` 调用）即可，Pipeline 不变。
+`analyzer.Risk` 已有 `File`/`Line`/`FixSuggestion` 字段。Publisher 侧可在保持现有 `PRReviewClient` 不变的前提下新增行级评论接口，或在 `CreateReview` 请求中填充 draft inline comments；Pipeline 不变。
 
 ### 多平台适配（GitLab / Bitbucket）
 
