@@ -1,5 +1,9 @@
 # PR Reviewer
 
+<p align="center">
+  <img width="30%" src="docs/images/Icon.png" alt="PR Reviewer Logo">
+</p>
+
 基于 AI 的 GitHub Pull Request 自动评审工具。提交 PR 后自动分析代码变更，生成结构化 Review 评论。
 
 [![Install](https://img.shields.io/badge/GitHub%20App-Install-blue)](https://github.com/apps/prreviewer-app)
